@@ -1,0 +1,151 @@
+// All amounts are integer minor units (分). No network or cloud dependency.
+export type PersonEntry = { id: string, name: string, cents: number }
+export type Activity = { id: string, date: string, time: string, place: string, category: string, note: string, people: PersonEntry[], updatedAt: number }
+export type Preferences = { theme: string, currency: string, category: string, pinSalt: string, pinHash: string, failedAttempts: number, blockedUntil: number }
+export type Ledger = { version: number, started: boolean, records: Activity[], drafts: Activity[], preferences: Preferences }
+export type Category = { name: string, icon: string, color: string, background: string }
+export type Totals = { income: number, expense: number, net: number, count: number, people: number }
+export type PersonTotal = { name: string, income: number, expense: number, net: number, count: number }
+export const STORAGE_KEY = 'nice-tally.ledger.v1'
+export const categories: Category[] = [
+  { name: '聚餐', icon: 'dining', color: '#fa7955', background: '#fff0e8' },
+  { name: '牌局', icon: 'cards', color: '#00a777', background: '#dcf8eb' },
+  { name: '运动', icon: 'sport', color: '#3898ef', background: '#e5f2ff' },
+  { name: '扑克', icon: 'flag', color: '#ec6481', background: '#ffeaf0' },
+  { name: '出游', icon: 'sun', color: '#edaa42', background: '#fff4d9' },
+  { name: '其他', icon: 'more', color: '#8591ac', background: '#edf0f6' }
+]
+export const avatarColors = ['#dff1ff', '#ebe1fa', '#ffdfeb', '#dcf5e9', '#f7edcc', '#e5edff']
+export function emptyLedger(): Ledger {
+  return { version: 1, started: false, records: [], drafts: [], preferences: { theme: 'light', currency: '¥', category: '聚餐', pinSalt: '', pinHash: '', failedAttempts: 0, blockedUntil: 0 } }
+}
+export function identifier(): string { return Date.now().toString() + '-' + Math.floor(Math.random() * 100000000).toString() }
+export function pad(value: number): string { return value < 10 ? '0' + value.toString() : value.toString() }
+export function today(): string { const d = new Date(); return d.getFullYear().toString() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
+export function currentTime(): string { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()) }
+export function money(cents: number): string { return (cents / 100).toFixed(2) }
+export function signedMoney(cents: number): string { return (cents > 0 ? '+' : '') + money(cents) }
+export function parseMoney(value: string): number | null {
+  const trimmed = value.trim()
+  if (!/^-?\d{1,8}(\.\d{1,2})?$/.test(trimmed)) return null
+  const negative = trimmed.startsWith('-')
+  const unsigned = negative ? trimmed.substring(1) : trimmed
+  const parts = unsigned.split('.')
+  const fraction = parts.length == 2 ? (parts[1] + '00').substring(0, 2) : '00'
+  const cents = parseInt(parts[0]) * 100 + parseInt(fraction)
+  return negative ? -cents : cents
+}
+export function categoryFor(name: string): Category { return categories.find((c: Category): boolean => c.name == name) ?? categories[5] }
+export function recordNet(record: Activity): number { let total = 0; record.people.forEach((p: PersonEntry) => { total += p.cents }); return total }
+export function totals(records: Activity[]): Totals {
+  let income = 0; let expense = 0
+  const names: string[] = []
+  records.forEach((record: Activity) => record.people.forEach((p: PersonEntry) => {
+    if (p.cents > 0) income += p.cents; else expense -= p.cents
+    if (!names.includes(p.name)) names.push(p.name)
+  }))
+  return { income: income, expense: expense, net: income - expense, count: records.length, people: names.length }
+}
+export function monthRecords(records: Activity[], month: string): Activity[] {
+  return records.filter((r: Activity): boolean => r.date.startsWith(month)).sort((a: Activity, b: Activity): number => (b.date + b.time).localeCompare(a.date + a.time))
+}
+export function peopleTotals(records: Activity[]): PersonTotal[] {
+  const result: PersonTotal[] = []
+  records.forEach((r: Activity) => {
+    const seen: string[] = []
+    r.people.forEach((p: PersonEntry) => {
+      let entry = result.find((v: PersonTotal): boolean => v.name == p.name)
+      if (entry == null) { entry = { name: p.name, income: 0, expense: 0, net: 0, count: 0 }; result.push(entry) }
+      if (p.cents > 0) entry.income += p.cents; else entry.expense -= p.cents
+      entry.net += p.cents
+      if (!seen.includes(p.name)) { entry.count++; seen.push(p.name) }
+    })
+  })
+  return result.sort((a: PersonTotal, b: PersonTotal): number => b.count - a.count)
+}
+export function newActivity(category: string): Activity {
+  return { id: identifier(), date: today(), time: currentTime(), place: '', category: category, note: '', people: [{ id: identifier(), name: '', cents: 0 }], updatedAt: Date.now() }
+}
+export function cloneLedger(source: Ledger): Ledger { return JSON.parse<Ledger>(JSON.stringify(source))! }
+export function cloneActivity(source: Activity): Activity { return JSON.parse<Activity>(JSON.stringify(source))! }
+export function validDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parts = value.split('-'); const y = parseInt(parts[0]); const m = parseInt(parts[1]); const d = parseInt(parts[2])
+  const date = new Date(y, m - 1, d)
+  return y >= 2000 && y <= 2100 && date.getFullYear() == y && date.getMonth() == m - 1 && date.getDate() == d
+}
+export function activityError(record: Activity, draft: boolean = false): string {
+  if (!validDate(record.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(record.time)) return '请选择有效的日期和时间'
+  if (!categories.some((c: Category): boolean => c.name == record.category)) return '请选择活动类型'
+  if (record.place.length > 60 || record.note.length > 200) return '地点或备注内容过长'
+  if (record.people.length == 0 || record.people.length > 50) return '请添加 1–50 位往来对象'
+  const names: string[] = []
+  for (let i = 0; i < record.people.length; i++) {
+    const p = record.people[i]
+    if (!draft && (p.name.trim().length == 0 || p.name.length > 20)) return '请填写往来对象姓名（最多 20 字）'
+    if (!Number.isFinite(p.cents) || !Number.isInteger(p.cents) || Math.abs(p.cents) > 9999999999) return '金额无效，请输入最多两位小数'
+    if (!draft && p.cents == 0) return '往来金额不能为 0'
+    if (!draft && names.includes(p.name.trim())) return '同一活动中姓名不能重复，请合并金额'
+    names.push(p.name.trim())
+  }
+  return ''
+}
+function safeActivity(value: Activity, draft: boolean): boolean {
+  if (value == null || typeof value.id != 'string' || value.id.length == 0 || typeof value.date != 'string' || typeof value.time != 'string' || typeof value.place != 'string' || typeof value.note != 'string' || typeof value.category != 'string' || !Array.isArray(value.people) || typeof value.updatedAt != 'number') return false
+  const personIds = new Set<string>()
+  for (let i = 0; i < value.people.length; i++) {
+    const p = value.people[i]
+    if (p == null || typeof p.id != 'string' || p.id.length == 0 || typeof p.name != 'string' || p.name.length > 20 || typeof p.cents != 'number' || personIds.has(p.id)) return false
+    personIds.add(p.id)
+  }
+  return activityError(value, draft) == ''
+}
+// Validate imports before writing anything. Never silently overwrite corrupt local data.
+export function parseLedger(text: string): Ledger | null {
+  try {
+    const data = JSON.parse<Ledger>(text)
+    if (data == null || data.version != 1 || typeof data.started != 'boolean' || !Array.isArray(data.records) || !Array.isArray(data.drafts) || data.preferences == null) return null
+    if (data.records.length > 50000 || data.drafts.length > 1000) return null
+    const p = data.preferences
+    if (!['light', 'dark', 'system'].includes(p.theme) || !['¥', '$', '€'].includes(p.currency) || !categories.some((c: Category): boolean => c.name == p.category) || typeof p.pinHash != 'string' || typeof p.pinSalt != 'string' || !Number.isFinite(p.failedAttempts) || !Number.isFinite(p.blockedUntil)) return null
+    const ids = new Set<string>()
+    for (let i = 0; i < data.records.length; i++) { const r = data.records[i]; if (!safeActivity(r, false) || ids.has(r.id)) return null; ids.add(r.id) }
+    const draftIds = new Set<string>()
+    for (let i = 0; i < data.drafts.length; i++) { const r = data.drafts[i]; if (!safeActivity(r, true) || draftIds.has(r.id)) return null; draftIds.add(r.id) }
+    return data
+  } catch (e) { return null }
+}
+export function persistLedger(data: Ledger): boolean {
+  try { uni.setStorageSync(STORAGE_KEY, JSON.stringify(data)); return true }
+  catch (e) { uni.showModal({ title: '未能保存到本地', content: '设备存储空间不足或存储不可用。本次修改尚未保存，请腾出空间后重试。', showCancel: false }); return false }
+}
+export function backupText(data: Ledger): string {
+  const copy = cloneLedger(data)
+  copy.preferences.pinHash = ''; copy.preferences.pinSalt = ''; copy.preferences.failedAttempts = 0; copy.preferences.blockedUntil = 0
+  return JSON.stringify(copy, null, 2)
+}
+function csvCell(value: string): string {
+  // Neutralize spreadsheet formulas, including leading whitespace/control characters.
+  const safe = /^[\s]*[=+@-]/.test(value) || /^[\t\r\n]/.test(value) ? "'" + value : value
+  return '"' + safe.replace(/"/g, '""') + '"'
+}
+export function csvText(data: Ledger): string {
+  const lines = ['日期,时间,活动类型,地点,往来对象,收入,支出,币种,备注']
+  data.records.forEach((r: Activity) => r.people.forEach((p: PersonEntry) => {
+    lines.push([csvCell(r.date), csvCell(r.time), csvCell(r.category), csvCell(r.place), csvCell(p.name), p.cents > 0 ? money(p.cents) : '0.00', p.cents < 0 ? money(-p.cents) : '0.00', csvCell(data.preferences.currency), csvCell(r.note)].join(','))
+  }))
+  return '\ufeff' + lines.join('\r\n')
+}
+export function sampleRecords(): Activity[] {
+  const month = today().substring(0, 7)
+  const day = parseInt(today().substring(8))
+  const make = (offset: number, category: string, place: string, entries: PersonEntry[], note: string): Activity => {
+    return { id: identifier(), date: month + '-' + pad(Math.max(1, day - offset)), time: ['19:30', '14:20', '18:00', '20:10'][offset % 4], place: place, category: category, people: entries, note: note, updatedAt: Date.now() }
+  }
+  return [
+    make(0, '聚餐', '幸福餐厅', [{ id: identifier(), name: '张三', cents: -5000 }, { id: identifier(), name: '李四', cents: 8000 }, { id: identifier(), name: '王五', cents: -15000 }], '朋友聚餐，记录相聚的好时光。'),
+    make(2, '牌局', '老地方', [{ id: identifier(), name: '张三', cents: 20000 }, { id: identifier(), name: '李四', cents: -8000 }, { id: identifier(), name: '王五', cents: 15000 }, { id: identifier(), name: '赵六', cents: 5000 }], '周末小聚'),
+    make(4, '运动', '羽毛球馆', [{ id: identifier(), name: '张三', cents: -4000 }, { id: identifier(), name: '李四', cents: -2000 }], '场地费用'),
+    make(6, '扑克', '朋友家', [{ id: identifier(), name: '王五', cents: 20000 }, { id: identifier(), name: '赵六', cents: -10000 }, { id: identifier(), name: '钱七', cents: 5000 }], '轻松一下')
+  ]
+}

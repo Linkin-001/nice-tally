@@ -1,0 +1,166 @@
+jest.setTimeout(30000)
+
+const platformInfo = process.env.uniTestPlatformInfo.toLocaleLowerCase()
+const isAndroid = platformInfo.startsWith('android')
+const isIos = platformInfo.startsWith('ios')
+const isHarmony = platformInfo.startsWith('harmony')
+const isApp = isAndroid || isIos || isHarmony
+const isWeb = platformInfo.startsWith('web')
+const isAppWebView = process.env.UNI_AUTOMATOR_APP_WEBVIEW == 'true'
+const isMP = platformInfo.startsWith('mp')
+
+describe('API-toast', () => {
+  if ( isMP) {
+    it('skip', async () => {
+      expect(1).toBe(1);
+    });
+    return;
+  }
+
+  const PAGE_PATH = '/pages/API/toast/toast'
+  let page;
+  let deviceShotOptions = {}
+  beforeAll(async () => {
+    page = await program.reLaunch(PAGE_PATH)
+    await page.waitFor("view");
+    await page.waitFor(1000);
+    const windowInfo = await program.callUniMethod('getWindowInfo');
+    let topSafeArea = windowInfo.safeAreaInsets.top;
+    if (isAppWebView) {
+      if (isIos) {
+        topSafeArea = 59
+        if (platformInfo.includes('26')) {
+          topSafeArea = 62
+        }
+      } else if (isAndroid) {
+        topSafeArea = 24
+        windowInfo.safeArea.bottom = 867
+        if (platformInfo.startsWith('android 5')) {
+          topSafeArea = 25
+        }if (platformInfo.startsWith('android 6')) {
+          windowInfo.safeArea.bottom = 592
+        }if (platformInfo.startsWith('android 8')) {
+          windowInfo.safeArea.bottom = 534
+        } else if (platformInfo.startsWith('android 11')) {
+          topSafeArea = 52
+        } else if (platformInfo.startsWith('android 12')) {
+          topSafeArea = 24
+          windowInfo.safeArea.bottom = 716
+        } else if (platformInfo.startsWith('android 13') || platformInfo.startsWith('android 15')) {
+          topSafeArea = 49
+          windowInfo.safeArea.bottom = 891
+        } else if (platformInfo.startsWith('android 14')) {
+          windowInfo.safeArea.bottom = 891
+        }
+      } else if (isHarmony) {
+        topSafeArea = 39
+        if (platformInfo.includes('nova_12')) {
+          topSafeArea = 35
+        }
+      }
+    }
+    const top = topSafeArea + 44
+    const bottom = Math.min(top + windowInfo.windowHeight, windowInfo.safeArea.bottom)
+    const left = windowInfo.safeArea.left
+    const right = windowInfo.safeArea.right - 10
+    deviceShotOptions = {
+      deviceShot: true,
+      area: {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top
+      },
+    }
+  });
+
+  async function screenShot(imgName) {
+    const image = await program.screenshot(deviceShotOptions);
+    const options = {customSnapshotIdentifier() {
+      return imgName
+    }
+    }
+    if (!isAppWebView) {
+      expect(image).toMatchImageSnapshot({ ...options,
+        failureThresholdType: 'percent',
+        failureThreshold: 0.002,
+      });
+    }
+    expect(image).toSaveImageSnapshot(options)
+    await page.waitFor(500);
+  }
+
+  it("onload-toast-test", async () => {
+    await screenShot('toast-onload')
+    await page.waitFor(2000);
+  })
+
+  it("icon-toast-test", async () => {
+    const icons = await page.$$('.radio-icon')
+    for (let i = 0; i < icons.length; i++) {
+      await icons[i].tap()
+      await page.waitFor(500);
+      await page.callMethod('toast1Tap')
+      await page.waitFor(500);
+      const iconText = await icons[i].text()
+      const iconValue = await icons[i].attribute('value')
+      const isLoadingIcon = iconValue == 'loading' || iconText.includes('加载')
+      await screenShot(`${iconText}-toast`)
+    }
+  })
+
+  it("icon=none-mask=true-toast-test", async () => {
+    await page.setData({data:{maskSelect: true}})
+    await page.callMethod('toast3Tap')
+    await page.waitFor(300);
+    await screenShot('icon=none-mask=true-toast-image')
+  })
+
+  it("image-toast-test", async () => {
+    await page.setData({data:{imageSelect: true}})
+    await page.waitFor(300);
+    await page.callMethod('toast1Tap')
+    await page.waitFor(500);
+    await screenShot('toast-image')
+  })
+
+  it("duration-toast-test", async () => {
+    await page.setData({data:{intervalSelect: 4000}})
+    await page.callMethod('toast1Tap')
+    await page.waitFor(2000);
+    await screenShot('toast-duration-2000')
+    await page.waitFor(1000);
+    await page.callMethod('hideToast')
+    await page.waitFor(300);
+    await screenShot('toast-duration-end')
+  })
+
+  if(isWeb){
+    return
+  }
+
+  it("position-toast-test", async () => {
+    if (isIos) {
+      const platformInfo = process.env.uniTestPlatformInfo.toLocaleLowerCase()
+      if (
+        platformInfo.indexOf('14.5') != -1 ||
+        platformInfo.indexOf('13.7') != -1 ||
+        platformInfo.indexOf('12.4') != -1
+      ) {
+        expect(1).toBe(1)
+        return
+      }
+    }
+
+    const positions = await page.$$('.radio-position')
+    for (let i = 0;i < positions.length;i++) {
+      // 等待上一个 toast 消失
+      await page.waitFor(2000);
+      await positions[i].tap()
+      const positionsText = await positions[i].attribute('value')
+      await page.callMethod('toast2Tap')
+      await page.waitFor(500);
+      await screenShot(`toast-position-${positionsText}`)
+    }
+  })
+});

@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "env": {
+    "vapor": true,
+    "compilerVersion": "5.24"
+  },
+  "files": {
+    "utssdk/app-android/index.uts": {
+      "md5": "d3a0b29604508d3385e47459e9e4deda"
+    },
+    "package.json": {
+      "md5": "0ebb71568925ccc959c0c1a0d4682c90"
+    }
+  }
+}

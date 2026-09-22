@@ -1,0 +1,1270 @@
+<template>
+	<view class="xj-app" :style="{ backgroundColor: '#F4F7FC' }" @touchstart="edgeBackStart"
+		@touchmove="edgeBackMove" @touchend="edgeBackEnd" @touchcancel="edgeBackCancel">
+		<view class="safe-top" :style="{ height: topInset + 'px' }" />
+		<view v-if="page == 'welcome'" class="welcome-page">
+			<image class="launch-background" src="/static/xiaojin/launch-landscape-v2.png" mode="aspectFill" />
+			<view class="launch-content">
+				<view class="welcome-top"><xj-asset name="logo" :size="72" tint="#FFF1F5" /><text class="brand">小金账</text><text
+						class="welcome-line">记录好每一笔美好生活</text></view>
+				<view class="launch-spacer" />
+				<view class="launch-copy"><text class="launch-script">简单的记账</text><text class="launch-script">更好的生活 ♡</text></view>
+				<view class="launch-features">
+					<view class="launch-feature"><xj-asset name="home" :size="29" tint="#DAE9FF" /><text class="launch-feature-text">完全离线 · 本地存储</text></view>
+					<view class="launch-feature"><xj-asset name="lock" :size="29" tint="#FFE0E9" /><text class="launch-feature-text">多账本 · 不同密码</text></view>
+					<view class="launch-feature"><xj-asset name="record" :size="29" tint="#EDE4FF" /><text class="launch-feature-text">自定义字段 · 灵活扩展</text></view>
+					<view class="launch-feature"><xj-asset name="chart" :size="29" tint="#DDF6F2" /><text class="launch-feature-text">丰富统计 · 多维分析</text></view>
+					<view class="launch-feature"><xj-asset name="coin" :size="29" tint="#FFF0D9" /><text class="launch-feature-text">个性主题 · 随心切换</text></view>
+					<view class="launch-feature"><xj-asset name="shield" :size="29" tint="#FFE0F2" /><text class="launch-feature-text">隐私安全 · 数据只属于你</text></view>
+				</view>
+				<button class="primary-btn launch-button" :style="accentBg" @click="beginSpace(false)">开始使用</button>
+				<text class="text-action centered launch-restore" :style="accentText" @click="go('restore')">从本地备份恢复</text>
+			</view>
+		</view>
+
+		<view v-else-if="page == 'lock' || page == 'pin-setup'" class="auth-page">
+			<view class="auth-nav"><text v-if="page == 'pin-setup'" class="text-action"
+					@click="cancelSetup">取消</text><text v-else class="app-wordmark">小金账</text></view>
+			<view class="auth-heading"><xj-asset name="lock" :size="62" tint="#F1F3F7" /><text
+					class="hero-title">{{ page == 'pin-setup' ? (firstPin ? '再次输入密码' : '设置解锁密码') : '欢迎回来' }}</text><text
+					class="body-copy centered">{{ page == 'pin-setup' ? '请设置 6 位数字密码' : '请输入密码' }}</text></view>
+			<view class="pin-dots">
+				<view v-for="n in 6" :key="n" class="pin-dot"
+					:style="{ backgroundColor: pin.length >= n ? accent : '#DFE4ED' }" />
+			</view>
+			<view class="auth-message"><text v-if="busy" class="secondary">正在安全处理…</text><text
+					v-else-if="lockSeconds > 0" class="error-text">尝试次数过多，请在 {{ countdown }} 后重试</text><text
+					v-else-if="error" class="error-text">{{ error }}</text></view>
+			<view class="keypad">
+				<view v-for="key in keys" :key="key" class="key-slot">
+					<view v-if="key" class="number-key" @click="pressPin(key)"><text
+							class="number-key-text">{{ key == 'delete' ? '⌫' : key }}</text></view>
+				</view>
+			</view>
+			<text v-if="page == 'lock'" class="text-action centered" @click="helpUnlock">无法解锁？</text>
+			<text v-else class="auth-warning">密码只用于本机解锁，不会上传。请妥善保存，忘记密码后无法通过服务器找回。</text>
+			<text class="footnote">完全离线 · 你的记录，由你掌控</text>
+		</view>
+
+		<template v-else>
+			<view class="workspace">
+				<view v-if="wide && space" class="side-nav"><text class="brand-small">小金账</text><text
+						class="secondary side-caption">记录生活，规划未来</text>
+					<view v-for="tab in tabs" :key="tab.page" class="side-item"
+						:style="{ backgroundColor: page == tab.page ? accentSoft : 'transparent' }"
+						@click="switchTab(tab.page)"><text class="row-title"
+							:style="page == tab.page ? accentText : {}">{{ tab.name }}</text></view>
+					<view class="side-item" @click="lockNow"><text class="secondary">锁定并退出</text></view>
+				</view>
+				<view class="main-panel">
+					<view v-if="!isTab" class="toolbar">
+						<text class="back-action" :style="accentText" @click="back">‹ 返回</text>
+						<text class="toolbar-title">{{ title }}</text>
+						<view class="toolbar-spacer" />
+					</view>
+					<scroll-view class="page-scroll">
+						<view class="page-content" :class="'screen-' + page">
+							<view v-if="error && page != 'fault'" class="error-box"><text
+									class="error-text">{{ error }}</text></view>
+
+							<template v-if="page == 'fault'">
+								<view class="empty-state"><xj-asset name="shield" :size="72" /><text
+										class="section-title">无法读取本地数据</text><text
+										class="body-copy centered">{{ error }}</text><button class="primary-btn"
+										:style="accentBg" @click="initialize">重试</button><text class="text-action"
+										@click="go('restore')">从备份恢复</text><text class="footnote">原始数据仍保留在本机</text>
+								</view>
+							</template>
+
+							<template v-if="page == 'space-new'">
+								<view class="page-intro"><xj-asset name="shield" :size="60" /><text
+										class="hero-title">{{ privateDraft ? '创建隐私空间' : '创建你的数据空间' }}</text><text
+										class="body-copy">一个空间可以包含多个账本。不同空间使用不同密码解锁。</text></view>
+								<text class="group-label">空间名称</text>
+								<view class="surface"><input v-model="spaceName" class="form-input" placeholder="我的空间"
+										:maxlength="20" /></view>
+								<text class="group-label">空间类型</text>
+								<view class="surface">
+									<view class="setting-row" @click="privateDraft = false">
+										<view class="grow"><text class="row-title">普通空间</text><text
+												class="row-caption">日常生活，轻松管理</text></view><text
+											:style="accentText">{{ !privateDraft ? '●' : '○' }}</text>
+									</view>
+									<view class="setting-row" @click="privateDraft = true">
+										<view class="grow"><text class="row-title">隐私空间</text><text
+												class="row-caption">独立密码，其他空间不可见</text></view><text
+											:style="accentText">{{ privateDraft ? '●' : '○' }}</text>
+									</view>
+								</view>
+								<view v-if="privateDraft" class="notice"><text class="notice-title">只属于这个空间</text><text
+										class="body-copy">不显示在普通空间，不参与其他空间统计。退出后需要重新输入密码，进入后台立即锁定。</text></view>
+								<button class="primary-btn" :style="accentBg" @click="startPinSetup">设置空间密码</button>
+							</template>
+
+							<template v-if="page == 'home' && book && space">
+								<view class="home-heading home-prototype-heading">
+									<view class="grow"><text class="eyebrow">{{ todayLabel }}</text><text
+											class="home-greeting">今天也是美好的一天！</text><text class="home-book" @click="go('books')">{{ book.name }} ⌄</text></view>
+									<view class="round-control" @click="go('records')"><text class="control-text"
+											:style="accentText">⌕</text></view>
+								</view>
+								<view class="balance-card home-balance-card"><text class="secondary">{{ periodLabel }}收支</text><text
+										class="balance-number" :style="accentText">{{ book.currency }}
+										{{ money(totals.net) }}</text>
+									<view class="money-row">
+										<view class="grow"><text class="muted-label">收入</text><text
+												class="money-value">{{ book.currency }}
+												{{ money(totals.income) }}</text></view>
+										<view class="grow"><text class="muted-label">支出</text><text
+												class="money-value">{{ book.currency }}
+												{{ money(totals.expense) }}</text></view>
+									</view>
+									<view class="card-divider" />
+									<view class="between"><text class="row-caption">本月 {{ totals.count }}
+											笔记录</text><text class="small-link" :style="accentText"
+											@click="go('stats')">查看统计 ›</text></view>
+								</view>
+								<view class="quick-row home-shortcuts">
+									<view v-for="item in shortcuts" :key="item.page" class="quick-item"
+										@click="quick(item.page)"><xj-asset :name="item.icon" :size="44"
+											tint="#F4F5F8" /><text class="quick-label">{{ item.name }}</text></view>
+								</view>
+								<view v-if="drafts.length" class="notice inline-notice" @click="editRecord(drafts[0])">
+									<text class="small-link" :style="accentText">{{ drafts.length }} 条草稿待完成</text><text
+										class="secondary">继续填写 ›</text>
+								</view>
+								<view class="section-heading"><text class="section-title">最近记录</text><text
+										class="small-link" @click="go('records')">查看全部 ›</text></view>
+								<view v-if="recent.length" class="surface">
+									<view v-for="t in recent" :key="t.id" class="transaction-row"
+										@click="showRecord(t)"><xj-asset :name="entityIcon(t)" :size="40"
+											:tint="t.kind == 'income' ? '#E9F7F1' : '#FFF1ED'" />
+										<view class="transaction-copy"><text
+												class="row-title">{{ recordTitle(book,t) }}</text><text
+												class="row-caption">{{ t.date }} ·
+												{{ t.note || label(book,t.objectId) }}</text></view><text
+											class="amount-small"
+											:style="{color:t.kind == 'income' ? '#32A78F' : '#24324A'}">{{ t.kind == 'income' ? '+' : t.kind == 'expense' ? '−' : '' }}{{ money(t.cents) }}</text>
+									</view>
+								</view>
+								<view v-else class="empty-state surface"><xj-asset name="empty" :size="60"
+										tint="#F4F5F8" /><text class="section-title">从第一笔开始</text><text
+										class="body-copy centered">一杯咖啡，一次出行，都值得被记下。</text><button class="soft-btn"
+										:style="accentText" @click="openEntry()">记一笔</button></view>
+								<text class="footnote">完全离线 · 本地加密存储</text>
+							</template>
+
+							<template v-if="page == 'books' && space">
+								<view class="section-heading"><text class="page-title">我的账本</text><text
+										class="add-action" :style="accentText" @click="newBook">＋</text></view>
+								<view class="segment">
+									<view class="segment-item" :style="!showArchived ? selectedSegment : {}"
+										@click="showArchived = false"><text class="segment-text">使用中</text></view>
+									<view class="segment-item" :style="showArchived ? selectedSegment : {}"
+										@click="showArchived = true"><text class="segment-text">已归档</text></view>
+								</view>
+								<view v-for="b in visibleBooks" :key="b.id" class="book-card" @click="selectBook(b)">
+									<xj-asset :name="b.icon" :size="50"
+										:tint="b.id == bookId ? accentSoft : '#F2F5F8'" />
+									<view class="book-copy">
+										<view class="row"><text class="section-title">{{ b.name }}</text><text
+												v-if="space.defaultBookId == b.id" class="badge"
+												:style="accentText">默认</text></view><text
+											class="row-caption">{{ b.type }} · {{ bookCount(b.id) }} 笔记录</text><text
+											class="row-caption">本月支出 {{ b.currency }}
+											{{ money(bookExpense(b.id)) }}</text>
+									</view><text class="chevron">›</text>
+								</view>
+								<view v-if="!visibleBooks.length" class="empty-state"><xj-asset name="book"
+										:size="64" /><text
+										class="section-title">{{ showArchived ? '暂无归档账本' : '还没有账本' }}</text><text
+										class="body-copy centered">{{ showArchived ? '归档后记录仍然保留，可随时恢复。' : '创建一个账本，开始记录生活。' }}</text>
+								</view>
+								<button v-if="!showArchived" class="outline-btn" :style="accentText" @click="newBook">＋
+									创建账本</button>
+								<text v-if="book" class="text-action centered" @click="manageBook(book)">管理当前账本</text>
+							</template>
+
+							<template v-if="page == 'book-new' || page == 'book-edit'">
+								<view class="book-preview"><xj-asset :name="bookForm.icon" :size="62" /><text
+										class="section-title">{{ bookForm.name || '你的新账本' }}</text><text
+										class="row-caption">{{ bookForm.type }} · {{ bookForm.currency }}</text></view>
+								<text class="group-label">账本名称 *</text>
+								<view class="surface"><input v-model="bookForm.name" class="form-input"
+										placeholder="例如：日常账本" :maxlength="20" /></view>
+								<text class="group-label">账本图标</text>
+								<view class="surface icon-options">
+									<view v-for="(name,i) in bookIcons" :key="name" class="icon-option"
+										:style="{borderColor:bookForm.icon == name ? accent : '#FFFFFF'}"
+										@click="bookForm.icon = name"><xj-asset :name="name" :size="38"
+											tint="#F2F4F7" /><text class="tiny">{{ bookIconLabels[i] }}</text></view>
+								</view>
+								<text class="group-label">主题色</text>
+								<view class="surface color-row">
+									<view v-for="c in themes" :key="c.color" class="swatch-wrap"
+										@click="bookForm.color = c.color">
+										<view class="swatch" :style="{backgroundColor:c.color}"><text
+												class="swatch-check">{{ bookForm.color == c.color ? '✓' : '' }}</text>
+										</view><text class="tiny">{{ c.name }}</text>
+									</view>
+								</view>
+								<view class="surface">
+									<picker :range="bookTypes" @change="bookForm.type = bookTypes[$event.detail.value]">
+										<view class="setting-row"><text class="row-title grow">账本类型</text><text
+												class="secondary">{{ bookForm.type }} ›</text></view>
+									</picker>
+									<picker :range="currencies"
+										@change="bookForm.currency = currencies[$event.detail.value]">
+										<view class="setting-row"><text class="row-title grow">默认币种</text><text
+												class="secondary">{{ bookForm.currency }} ›</text></view>
+									</picker>
+								</view>
+								<text class="body-copy">类型用于选择默认配置；账本属于当前解锁空间。</text>
+								<button class="primary-btn" :style="accentBg" :disabled="busy"
+									@click="submitBook">{{ busy ? '正在保存…' : page == 'book-edit' ? '保存修改' : '创建账本' }}</button>
+							</template>
+
+							<template v-if="page == 'book-manage' && book">
+								<view class="book-preview"><xj-asset :name="book.icon" :size="62" /><text
+										class="page-title">{{ book.name }}</text><text
+										class="secondary">{{ bookCount(book.id) }} 笔记录 · {{ book.fields.length }}
+										个自定义字段</text></view>
+								<view class="surface">
+									<view class="setting-row" @click="editBook"><text
+											class="row-title grow">名称、图标与主题</text><text class="chevron">›</text></view>
+									<view class="setting-row" @click="defaultBook"><text
+											class="row-title grow">设为默认账本</text><text
+											class="secondary">{{ space && space.defaultBookId == book.id ? '已设为默认' : '›' }}</text>
+									</view>
+									<view class="setting-row" @click="openCopy"><text
+											class="row-title grow">复制账本</text><text class="chevron">›</text></view>
+								</view>
+								<view class="surface">
+									<view class="setting-row" @click="openCatalog('expense')"><text
+											class="row-title grow">分类管理</text><text class="chevron">›</text></view>
+									<view class="setting-row" @click="openCatalog('object')"><text
+											class="row-title grow">往来对象</text><text class="chevron">›</text></view>
+									<view class="setting-row" @click="openCatalog('account')"><text
+											class="row-title grow">支付账户</text><text class="chevron">›</text></view>
+									<view class="setting-row" @click="go('fields')"><text
+											class="row-title grow">自定义字段</text><text
+											class="secondary">{{ book.fields.filter(f => !f.deleted).length }} 个
+											›</text></view>
+								</view>
+								<view class="surface">
+									<view class="setting-row" @click="archiveBook"><text
+											class="row-title grow">{{ book.archived ? '恢复账本' : '归档账本' }}</text><text
+											class="chevron">›</text></view>
+									<view class="setting-row" @click="deleteBook"><text
+											class="danger grow">删除账本</text><text class="chevron">›</text></view>
+								</view>
+								<text class="body-copy">归档会保留历史记录和统计；删除账本将永久移除其中的数据。</text>
+							</template>
+
+							<template v-if="page == 'records' && book">
+								<text class="page-title">记录</text>
+								<view class="records-calendar"><view class="calendar-month-row"><text class="section-title">{{ period }} 月度记录</text><text class="small-link" :style="accentText" @click="recordDay=''">全部</text></view><view class="calendar-week-row"><text v-for="name in calendarWeekdays" :key="name" class="calendar-weekday">{{ name }}</text></view><view class="calendar-days"><view v-for="(day,index) in recordCalendarCells" :key="index" class="calendar-day-slot"><view v-if="day" class="calendar-day" :style="recordDay==recordDateKey(day)?accentBg:{}" @click="recordDay=recordDay==recordDateKey(day)?'':recordDateKey(day)"><text class="calendar-day-text" :style="recordDay==recordDateKey(day)?{color:'#FFFFFF'}:{}">{{ day }}</text></view></view></view></view>
+								<view class="search-surface"><input v-model="search" class="form-input"
+										placeholder="搜索备注、分类、对象或自定义字段" /></view>
+								<view class="filter-row">
+									<picker mode="date" fields="month" :value="period + '-01'"
+										@change="period = $event.detail.value.slice(0,7)"><text
+											class="filter-chip">{{ period }} ⌄</text></picker>
+									<picker :range="kindLabels" @change="kindFilter = kindOptions[$event.detail.value]">
+										<text class="filter-chip">{{ kindLabels[kindOptions.indexOf(kindFilter)] }}
+											⌄</text>
+									</picker><text class="filter-chip" @click="advancedFilters = !advancedFilters">筛选
+										{{ advancedFilters ? '−' : '＋' }}</text>
+								</view>
+								<view v-if="advancedFilters" class="surface filter-panel"><text
+										class="group-label">金额范围</text>
+									<view class="row"><input v-model="minAmount" class="compact-input grow" type="digit"
+											placeholder="最低金额" /><text class="secondary">—</text><input
+											v-model="maxAmount" class="compact-input grow" type="digit"
+											placeholder="最高金额" /></view>
+									<picker
+										:range="['所有分类', ...book.entities.filter(e => ['expense','income'].includes(e.kind)).map(e=>e.name)]"
+										@change="categoryFilter = Number($event.detail.value) == 0 ? '' : book.entities.filter(e=>['expense','income'].includes(e.kind))[$event.detail.value-1].id">
+										<view class="setting-row"><text class="row-title grow">分类</text><text
+												class="secondary">{{ categoryFilter ? label(book,categoryFilter) : '全部' }}
+												›</text></view>
+									</picker>
+									<view v-for="f in book.fields.filter(f=>f.filterable && !f.deleted)" :key="f.id">
+										<text class="group-label">{{ f.name }}</text><input v-model="fieldFilters[f.id]"
+											class="compact-input" placeholder="输入匹配内容" />
+									</view><text class="text-action" :style="accentText"
+										@click="clearFilters">重置筛选</text>
+								</view>
+								<view class="section-heading"><text class="secondary">{{ filtered.length }}
+										笔记录</text><text class="small-link" :style="accentText" @click="openEntry()">＋
+										记一笔</text></view>
+								<view v-if="filtered.length" class="surface">
+									<view v-for="t in filtered" :key="t.id" class="transaction-row"
+										@click="showRecord(t)" @longpress="recordActions(t)"><xj-asset
+											:name="entityIcon(t)" :size="38" tint="#F2F5F8" />
+										<view class="transaction-copy"><text
+												class="row-title">{{ recordTitle(book,t) }}</text><text
+												class="row-caption">{{ t.date }} ·
+												{{ t.note || label(book,t.objectId) }}</text></view><text
+											class="amount-small"
+											:style="{color:t.kind=='income'?'#32A78F':'#24324A'}">{{ t.kind=='income'?'+':t.kind=='expense'?'−':'' }}{{ money(t.cents) }}</text>
+									</view>
+								</view>
+								<view v-else class="empty-state"><xj-asset name="empty" :size="64" /><text
+										class="section-title">没有找到记录</text><text
+										class="body-copy centered">试试其他关键词，或调整筛选条件。</text><text class="text-action"
+										:style="accentText" @click="clearFilters">清除筛选</text></view>
+							</template>
+
+							<template v-if="page == 'entry' && book">
+								<view class="segment">
+									<view v-for="(k,i) in transactionKinds" :key="k" class="segment-item"
+										:style="entry.kind==k ? {backgroundColor:accent} : {}" @click="changeKind(k)">
+										<text class="segment-text"
+											:style="{color:entry.kind==k?'#FFFFFF':'#8590A2'}">{{ transactionLabels[i] }}</text>
+									</view>
+								</view>
+								<view class="amount-entry"><text class="amount-currency"
+										:style="accentText">{{ book.currency }}</text><input v-model="amount"
+										class="amount-field" type="digit" placeholder="0.00" :maxlength="11" /></view>
+								<view v-if="entry.kind != 'transfer'" class="category-grid">
+									<view v-for="e in entryCategories" :key="e.id" class="category-item"
+										:style="{backgroundColor:entry.categoryId==e.id?accentSoft:'transparent'}"
+										@click="entry.categoryId = e.id"><xj-asset :name="e.icon" :size="40"
+											:tint="entry.categoryId==e.id?accentSoft:'#F0F3F7'" /><text
+											class="category-name"
+											:style="entry.categoryId==e.id?accentText:{}">{{ e.name }}</text></view>
+								</view>
+								<view class="entry-keypad">
+									<view v-for="key in amountKeys" :key="key" class="entry-key-slot">
+										<view v-if="key" class="entry-key" :class="key=='delete'?'entry-key-delete':''" @click="pressAmountKey(key)"><text
+												class="entry-key-text">{{ key=='delete'?'⌫':key }}</text></view>
+									</view>
+								</view>
+								<view class="surface">
+									<picker mode="date" :value="entry.date" @change="entry.date = $event.detail.value">
+										<view class="setting-row"><text class="row-title grow">日期</text><text
+												class="secondary">{{ entry.date }} ›</text></view>
+									</picker>
+									<picker :range="accountOptions.map(e=>e.name)"
+										@change="entry.accountId = accountOptions[$event.detail.value].id">
+										<view class="setting-row"><text
+												class="row-title grow">{{ entry.kind=='transfer'?'转出账户':'支付方式' }}</text><text
+												class="secondary">{{ label(book,entry.accountId) }} ›</text></view>
+									</picker>
+									<picker v-if="entry.kind=='transfer'" :range="accountOptions.map(e=>e.name)"
+										@change="entry.toAccountId = accountOptions[$event.detail.value].id">
+										<view class="setting-row"><text class="row-title grow">转入账户</text><text
+												class="secondary">{{ label(book,entry.toAccountId) }} ›</text></view>
+									</picker>
+									<picker :range="objectOptions.map(e=>e.name)"
+										@change="entry.objectId = objectOptions[$event.detail.value].id">
+										<view class="setting-row"><text class="row-title grow">往来对象</text><text
+												class="secondary">{{ label(book,entry.objectId) }} ›</text></view>
+									</picker>
+									<view class="setting-row"><text class="row-title">备注</text><input
+											v-model="entry.note" class="inline-input" placeholder="点击输入备注"
+											:maxlength="300" /></view>
+								</view>
+								<text v-if="entry.kind=='transfer'" class="body-copy">转账只改变账户间的往来，不计入收入和支出。</text>
+								<view class="section-heading" @click="moreFields = !moreFields"><text
+										class="section-title">更多字段</text><text class="small-link"
+										:style="accentText">{{ moreFields ? '收起 −' : '展开 ＋' }}</text></view>
+								<view v-if="moreFields" class="surface field-values">
+									<view v-for="f in visibleFields" :key="f.id" class="dynamic-field"><text
+											class="field-label">{{ f.name }}{{ f.required?' *':'' }}</text>
+										<picker v-if="f.type=='单选' || f.type=='对象引用'" :range="optionsFor(f)"
+											@change="entry.values[f.id] = optionsFor(f)[$event.detail.value]">
+											<view class="field-select"><text
+													class="secondary">{{ entry.values[f.id] || '请选择' }} ›</text></view>
+										</picker>
+										<view v-else-if="f.type=='多选'" class="chips-wrap"><text v-for="o in f.options"
+												:key="o" class="filter-chip" :style="multiSelected(f,o)?accentText:{}"
+												@click="toggleMulti(f,o)">{{ multiSelected(f,o)?'✓ ':'' }}{{ o }}</text>
+										</view>
+										<switch v-else-if="f.type=='开关'" :checked="entry.values[f.id]=='是'"
+											:color="accent"
+											@change="entry.values[f.id] = $event.detail.value ? '是' : '否'" />
+										<picker v-else-if="f.type=='日期'" mode="date"
+											@change="entry.values[f.id] = $event.detail.value"><text
+												class="field-select secondary">{{ entry.values[f.id] || '选择日期' }}
+												›</text></picker>
+										<view v-else-if="f.type=='星级'" class="row"><text v-for="n in 5" :key="n"
+												class="star"
+												:style="{color:Number(entry.values[f.id]||0)>=n?accent:'#DCE1EA'}"
+												@click="entry.values[f.id] = String(n)">★</text></view>
+										<view v-else-if="f.type=='图片' || f.type=='文件'"><text class="text-action"
+												:style="accentText" @click="chooseAttachment(f)">＋
+												添加{{ f.type }}</text><text v-if="entry.values[f.id]" class="body-copy"
+												@click="previewAttachment(f)">{{ attachmentLabel(entry.values[f.id]) }}</text><text
+												v-if="entry.values[f.id]" class="danger small-link"
+												@click="entry.values[f.id] = ''">移除附件</text></view>
+										<input v-else v-model="entry.values[f.id]"
+											:type="['数字','金额'].includes(f.type)?'digit':'text'" class="compact-input"
+											:placeholder="f.type=='日期时间'?'YYYY-MM-DD HH:mm':'请输入'+f.name" />
+									</view>
+									<text v-if="!visibleFields.length" class="body-copy">当前条件下没有需要填写的扩展字段。</text><text
+										class="text-action" :style="accentText" @click="go('fields')">＋ 配置自定义字段</text>
+								</view>
+								<view v-if="saveError" class="error-box"><text class="error-text">{{ saveError }}</text>
+								</view>
+								<button class="primary-btn" :style="accentBg" :disabled="busy"
+									@click="submitEntry(false)">{{ busy?'正在保存…':'保存记录' }}</button>
+								<view class="between"><text class="text-action" :style="accentText"
+										@click="submitEntry(true)">保存草稿</text>
+									<view class="row"><text class="secondary">保存后继续</text>
+										<switch :checked="keepEntering" :color="accent"
+											@change="keepEntering = $event.detail.value" />
+									</view>
+								</view>
+							</template>
+
+							<template v-if="page == 'detail' && selected && book">
+								<view class="detail-hero"><xj-asset :name="entityIcon(selected)" :size="58" /><text
+										class="section-title">{{ recordTitle(book,selected) }}</text><text
+										class="detail-amount"
+										:style="{color:selected.kind=='income'?'#32A78F':accent}">{{ selected.kind=='income'?'+':selected.kind=='expense'?'−':'' }}{{ book.currency }}
+										{{ money(selected.cents) }}</text><text
+										class="secondary">{{ selected.draft?'草稿':transactionLabels[transactionKinds.indexOf(selected.kind)] }}</text>
+								</view>
+								<view class="surface">
+									<view v-for="row in detailRows" :key="row.name" class="setting-row"><text
+											class="secondary detail-label">{{ row.name }}</text><text
+											class="detail-value">{{ row.value }}</text></view>
+								</view>
+								<view v-if="historicalFields.length" class="surface">
+									<view v-for="f in historicalFields" :key="f.id" class="setting-row"><text
+											class="secondary detail-label">{{ f.name }}{{ f.deleted?'（已删除）':!f.enabled?'（已停用）':'' }}</text><text
+											class="detail-value"
+											@click="previewStoredAttachment(f,selected.values[f.id])">{{ ['图片','文件'].includes(f.type)?attachmentLabel(selected.values[f.id]):selected.values[f.id] }}</text>
+									</view>
+								</view>
+								<text class="footnote">创建于 {{ new Date(selected.createdAt).toLocaleString() }}</text>
+								<view class="actions-row"><button class="soft-btn grow action-secondary"
+										@click="copyRecord">复制</button><button class="primary-btn grow action-primary"
+										:style="accentBg" @click="editRecord(selected)">编辑</button></view><text
+									class="text-action centered danger" @click="deleteRecord">删除记录</text>
+							</template>
+
+							<template v-if="page == 'fields' && book">
+								<text class="page-title">字段配置</text><text class="body-copy">让每一笔记录，都有自己的细节。</text>
+								<text class="group-label">基础字段 · 系统内置</text>
+								<view class="surface">
+									<view v-for="name in ['金额','收支类型','分类','往来对象','日期','支付方式','备注']" :key="name"
+										class="setting-row"><text class="row-title grow">{{ name }}</text><text
+											class="row-caption">不可删除</text></view>
+								</view>
+								<view class="section-heading"><text class="section-title">自定义字段</text><text
+										class="row-caption">当前账本</text></view>
+								<view class="surface">
+									<view v-for="f in book.fields.filter(f=>!f.deleted).sort((a,b)=>a.order-b.order)"
+										:key="f.id" class="setting-row">
+										<view class="grow" @click="editField(f)"><text
+												class="row-title">{{ f.name }}</text><text
+												class="row-caption">{{ f.type }}{{ f.required?' · 必填':'' }}{{ f.enabled?'':' · 已停用' }}{{ f.conditionField?' · 条件显示':'' }}</text>
+										</view><text class="move-action" @click="moveField(f,-1)">↑</text><text
+											class="move-action" @click="moveField(f,1)">↓</text><text class="chevron"
+											@click="editField(f)">›</text>
+									</view>
+								</view>
+								<button class="primary-btn" :style="accentBg" @click="newField">＋ 添加自定义字段</button><text
+									class="body-copy">停用或删除字段会保留历史值。已有记录使用的字段类型不可直接修改。</text>
+							</template>
+
+							<template v-if="page == 'field-edit' && book">
+								<text class="group-label">字段名称 *</text>
+								<view class="surface"><input v-model="fieldForm.name" class="form-input"
+										placeholder="例如：是否报销、参与人、项目" :maxlength="24" /></view>
+								<view class="surface">
+									<picker :range="fieldTypes" @change="setFieldType($event.detail.value)">
+										<view class="setting-row"><text class="row-title grow">字段类型</text><text
+												class="secondary">{{ fieldForm.type }} ›</text></view>
+									</picker>
+								</view>
+								<template v-if="['单选','多选'].includes(fieldForm.type)"><text class="group-label">选项 ·
+										每行一项</text><textarea v-model="fieldOptionsText" class="text-area"
+										placeholder="现金&#10;微信&#10;银行卡" /></template>
+								<text class="group-label">默认值</text>
+								<view class="surface"><input v-model="fieldForm.defaultValue" class="form-input"
+										placeholder="不设置默认值" /></view>
+								<view class="surface">
+									<view class="setting-row"><text class="row-title grow">必填</text>
+										<switch :checked="fieldForm.required" :color="accent"
+											@change="fieldForm.required=$event.detail.value" />
+									</view>
+									<view class="setting-row"><text class="row-title grow">启用字段</text>
+										<switch :checked="fieldForm.enabled" :color="accent"
+											@change="fieldForm.enabled=$event.detail.value" />
+									</view>
+									<view class="setting-row"><text class="row-title grow">参与搜索</text>
+										<switch :checked="fieldForm.searchable" :color="accent"
+											@change="fieldForm.searchable=$event.detail.value" />
+									</view>
+									<view class="setting-row"><text class="row-title grow">参与筛选</text>
+										<switch :checked="fieldForm.filterable" :color="accent"
+											@change="fieldForm.filterable=$event.detail.value" />
+									</view>
+									<view class="setting-row"><text class="row-title grow">参与统计分组</text>
+										<switch :checked="fieldForm.statistical" :color="accent"
+											@change="fieldForm.statistical=$event.detail.value" />
+									</view>
+								</view>
+								<text class="group-label">适用收支类型 · 不选则全部适用</text>
+								<view class="chips-wrap"><text v-for="(k,i) in transactionKinds" :key="k"
+										class="filter-chip" :style="fieldForm.kinds.includes(k)?accentText:{}"
+										@click="toggleFieldKind(k)">{{ fieldForm.kinds.includes(k)?'✓ ':'' }}{{ transactionLabels[i] }}</text>
+								</view>
+								<text class="group-label">适用分类</text>
+								<picker
+									:range="['全部分类',...book.entities.filter(e=>['expense','income'].includes(e.kind)).map(e=>e.name)]"
+									@change="fieldForm.categoryId=Number($event.detail.value)==0?'':book.entities.filter(e=>['expense','income'].includes(e.kind))[$event.detail.value-1].id">
+									<view class="surface setting-row"><text
+											class="row-title grow">{{ fieldForm.categoryId?label(book,fieldForm.categoryId):'全部分类' }}</text><text
+											class="chevron">›</text></view>
+								</picker>
+								<text class="group-label">条件显示</text>
+								<view class="surface">
+									<picker :range="conditionOptions.map(o=>o.name)"
+										@change="fieldForm.conditionField=conditionOptions[$event.detail.value].id">
+										<view class="setting-row"><text class="row-title grow">当以下字段等于</text><text
+												class="secondary">{{ conditionOptions.find(o=>o.id==fieldForm.conditionField)?.name || '始终显示' }}
+												›</text></view>
+									</picker>
+									<picker v-if="['category','account'].includes(fieldForm.conditionField)"
+										:range="conditionValueOptions.map(e=>e.name)"
+										@change="fieldForm.conditionValue=conditionValueOptions[$event.detail.value].id">
+										<view class="setting-row"><text class="row-title grow">匹配值</text><text
+												class="secondary">{{ label(book,fieldForm.conditionValue) }} ›</text>
+										</view>
+									</picker><input v-else-if="fieldForm.conditionField"
+										v-model="fieldForm.conditionValue" class="form-input" placeholder="例如：是" />
+								</view>
+								<text class="body-copy">只有条件成立时显示和校验必填；条件隐藏不会删除已存历史值。条件仅可引用排序在前的字段，避免循环依赖。</text>
+								<button class="primary-btn" :style="accentBg" @click="submitField">保存字段</button><text
+									v-if="editingField" class="danger text-action centered"
+									@click="deleteField">删除字段，保留历史值</text>
+							</template>
+
+							<template v-if="page == 'catalog' && book">
+								<view class="section-heading"><text
+										class="page-title">{{ catalogKind=='object'?'往来对象':catalogKind=='account'?'支付账户':'分类管理' }}</text><text
+										class="add-action" :style="accentText" @click="newEntity">＋</text></view>
+								<view v-if="['expense','income'].includes(catalogKind)" class="segment">
+									<view class="segment-item" :style="catalogKind=='expense'?selectedSegment:{}"
+										@click="catalogKind='expense'"><text class="segment-text">支出</text></view>
+									<view class="segment-item" :style="catalogKind=='income'?selectedSegment:{}"
+										@click="catalogKind='income'"><text class="segment-text">收入</text></view>
+								</view>
+								<view class="search-surface"><input v-model="entitySearch" class="form-input"
+										placeholder="搜索名称" /></view>
+								<view class="surface">
+									<view v-for="e in catalogEntities" :key="e.id" class="transaction-row"
+										@click="showEntity(e)"><xj-asset :name="e.icon" :size="40" tint="#F1F4F8" />
+										<view class="transaction-copy"><text class="row-title">{{ e.name }}</text><text
+												class="row-caption">{{ e.enabled?'使用中':'已停用' }}{{ e.parentId?' · '+label(book,e.parentId):'' }}</text>
+										</view><text class="chevron">›</text>
+									</view>
+								</view><button class="outline-btn" :style="accentText" @click="newEntity">＋
+									添加{{ catalogKind=='object'?'对象':catalogKind=='account'?'账户':'分类' }}</button>
+							</template>
+
+							<template v-if="page == 'entity-edit' && book">
+								<view class="book-preview"><xj-asset :name="entityForm.icon" :size="58" /><text
+										class="section-title">{{ entityForm.name || '新建配置' }}</text></view><text
+									class="group-label">名称 *</text>
+								<view class="surface"><input v-model="entityForm.name" class="form-input"
+										placeholder="请输入名称" :maxlength="24" /></view><text
+									class="group-label">图标与颜色</text>
+								<view class="surface entity-style-panel"><view class="entity-icon-options"><view v-for="name in bookIcons" :key="name"
+										class="entity-icon-option" :style="{backgroundColor:entityForm.icon==name?accentSoft:'#F5F8FC'}" @click="entityForm.icon=name"><xj-asset :name="name" :size="31" tint="#F5F8FC" /></view></view><view class="color-row entity-colors"><view v-for="c in themes" :key="c.color" class="swatch-wrap" @click="entityForm.color=c.color"><view class="swatch" :style="{backgroundColor:c.color}"><text class="swatch-check">{{ entityForm.color==c.color?'✓':'' }}</text></view></view></view></view><text
+									class="group-label">备注</text><textarea v-model="entityForm.note"
+									class="text-area short-area" placeholder="添加一些说明" />
+								<picker v-if="['income','expense'].includes(entityForm.kind)"
+									:range="['无上级分类',...parentOptions.map(e=>e.name)]"
+									@change="entityForm.parentId=Number($event.detail.value)==0?'':parentOptions[$event.detail.value-1].id">
+									<view class="surface setting-row"><text class="row-title grow">上级分类</text><text
+											class="secondary">{{ entityForm.parentId?label(book,entityForm.parentId):'无' }}
+											›</text></view>
+								</picker>
+								<view class="surface setting-row"><text class="row-title grow">启用</text>
+									<switch :checked="entityForm.enabled" :color="accent"
+										@change="entityForm.enabled=$event.detail.value" />
+								</view><button class="primary-btn" :style="accentBg"
+									@click="submitEntity">保存</button><text
+									class="body-copy">停用后不再出现在新记录选择列表，历史记录和统计仍保留。</text>
+							</template>
+
+							<template v-if="page == 'entity-detail' && book">
+								<view class="book-preview"><xj-asset :name="entityForm.icon" :size="58" /><text
+										class="page-title">{{ entityForm.name }}</text><text
+										class="body-copy">{{ entityForm.note || '暂无备注' }}</text></view>
+								<view class="surface metric-row">
+									<view class="grow"><text class="muted-label">累计收入</text><text
+											class="money-value">{{ money(entityTotals.income) }}</text></view>
+									<view class="grow"><text class="muted-label">累计支出</text><text
+											class="money-value">{{ money(entityTotals.expense) }}</text></view>
+									<view class="grow"><text class="muted-label">净往来</text><text
+											class="money-value">{{ money(entityTotals.net) }}</text></view>
+								</view>
+								<view class="section-heading"><text class="section-title">关联记录</text><text
+										class="secondary">{{ entityRecords.length }} 笔</text></view>
+								<view class="surface">
+									<view v-for="t in entityRecords" :key="t.id" class="setting-row"
+										@click="showRecord(t)">
+										<view class="grow"><text class="row-title">{{ recordTitle(book,t) }}</text><text
+												class="row-caption">{{ t.date }}</text></view><text
+											class="money-value">{{ money(t.cents) }}</text>
+									</view>
+								</view><button class="primary-btn" :style="accentBg"
+									@click="go('entity-edit')">编辑配置</button><text class="text-action centered"
+									@click="toggleEntity">{{ entityForm.enabled?'停用':'重新启用' }}</text>
+							</template>
+
+							<template v-if="page == 'stats' && book && space">
+								<view class="section-heading"><text class="page-title">统计</text><text class="small-link"
+										:style="accentText" @click="createReport">＋ 新建方案</text></view>
+								<view class="filter-row">
+									<picker mode="date" fields="month" :value="period+'-01'"
+										@change="period=$event.detail.value.slice(0,7)"><text
+											class="filter-chip">{{ period }} ⌄</text></picker><text class="filter-chip"
+										@click="statKind=statKind=='expense'?'income':'expense'">{{ statKind=='expense'?'支出':'收入' }}
+										⌄</text>
+								</view>
+								<view class="surface chart-card"><text
+										class="secondary">{{ statKind=='expense'?'本月支出':'本月收入' }}</text><text
+										class="stats-number" :style="accentText">{{ book.currency }}
+										{{ money(statKind=='expense'?totals.expense:totals.income) }}</text><xj-chart
+										:groups="defaultGroups" :chart="'donut'" :accent="accent" />
+									<view v-for="(g,i) in defaultGroups" :key="g.name" class="legend-row"
+										@click="drillInto(g,defaultReport)">
+										<view class="legend-dot"
+											:style="{backgroundColor:themes[i%themes.length].color}" /><text
+											class="row-title grow">{{ g.name }}</text><text
+											class="money-value">{{ money(g.value) }}</text><text
+											class="chevron">›</text>
+									</view><text v-if="!defaultGroups.length"
+										class="body-copy centered">记下第一笔，这里就会出现收支分析。</text>
+								</view>
+								<view class="section-heading"><text class="section-title">我的统计方案</text><text
+										class="secondary">{{ book.reports.length }} 个</text></view>
+								<view v-for="r in book.reports" :key="r.id" class="surface report-card">
+									<view class="between"><text class="section-title"
+											@click="viewReport(r)">{{ r.name }}</text><text class="small-link"
+											:style="accentText" @click="editReport(r)">编辑</text></view><text
+										class="row-caption">{{ chartLabels[chartOptions.indexOf(r.chart)] }} ·
+										{{ r.period=='all'?'全部时间':r.period }}</text><text class="text-action"
+										:style="accentText" @click="viewReport(r)">查看分析 ›</text>
+								</view>
+								<button class="outline-btn" :style="accentText" @click="createReport">＋ 创建自定义统计</button>
+							</template>
+
+							<template v-if="page == 'report-edit' && space && book">
+								<text class="group-label">方案名称 *</text>
+								<view class="surface"><input v-model="reportForm.name" class="form-input"
+										placeholder="例如：本月餐饮支付方式分析" /></view>
+								<text class="group-label">数据范围 · 仅当前空间</text>
+								<view class="surface">
+									<view v-for="b in space.books" :key="b.id" class="setting-row"
+										@click="toggleReportBook(b.id)"><text
+											class="row-title grow">{{ b.name }}{{ b.archived?'（已归档）':'' }}</text><text
+											:style="accentText">{{ reportForm.bookIds.includes(b.id)?'●':'○' }}</text>
+									</view>
+								</view>
+								<view class="surface">
+									<picker :range="kindLabels"
+										@change="reportForm.kind=kindOptions[$event.detail.value]">
+										<view class="setting-row"><text class="row-title grow">统计对象</text><text
+												class="secondary">{{ kindLabels[kindOptions.indexOf(reportForm.kind)] }}
+												›</text></view>
+									</picker>
+									<picker :range="metricLabels"
+										@change="reportForm.metric=metricOptions[$event.detail.value]">
+										<view class="setting-row"><text class="row-title grow">指标</text><text
+												class="secondary">{{ metricLabels[metricOptions.indexOf(reportForm.metric)] }}
+												›</text></view>
+									</picker>
+									<picker :range="dimensions.map(d=>d.name)"
+										@change="reportForm.dimension=dimensions[$event.detail.value].id">
+										<view class="setting-row"><text class="row-title grow">分析维度</text><text
+												class="secondary">{{ dimensions.find(d=>d.id==reportForm.dimension)?.name || '分类' }}
+												›</text></view>
+									</picker>
+									<picker mode="date" fields="month" :value="period+'-01'"
+										@change="reportForm.period=$event.detail.value.slice(0,7)">
+										<view class="setting-row"><text class="row-title grow">时间范围</text><text
+												class="secondary">{{ reportForm.period=='all'?'全部时间':reportForm.period }}
+												›</text></view>
+									</picker>
+									<view class="setting-row" @click="reportForm.period='all'"><text
+											class="row-title grow">包含全部时间</text><text
+											:style="accentText">{{ reportForm.period=='all'?'✓':'' }}</text></view>
+								</view>
+								<view class="surface">
+									<picker :range="metricFields.map(f=>f.name)"
+										@change="reportForm.valueField=metricFields[$event.detail.value].id">
+										<view class="setting-row"><text class="row-title grow">统计数值</text><text
+												class="secondary">{{ metricFields.find(f=>f.id==(reportForm.valueField||''))?.name || '交易金额' }}
+												›</text></view>
+									</picker>
+									<picker :range="reportCategories.map(e=>e.name)"
+										@change="reportForm.categoryId=reportCategories[$event.detail.value].id">
+										<view class="setting-row"><text class="row-title grow">限定分类</text><text
+												class="secondary">{{ reportCategories.find(e=>e.id==reportForm.categoryId)?.name || '全部分类' }}
+												›</text></view>
+									</picker>
+								</view>
+								<text class="group-label">图表类型</text>
+								<view class="chips-wrap"><text v-for="(c,i) in chartOptions" :key="c"
+										class="filter-chip" :style="reportForm.chart==c?accentText:{}"
+										@click="reportForm.chart=c">{{ chartLabels[i] }}</text></view>
+								<view class="surface">
+									<picker :range="['金额降序','金额升序']"
+										@change="reportForm.order=Number($event.detail.value)==0?'desc':'asc'">
+										<view class="setting-row"><text class="row-title grow">排序</text><text
+												class="secondary">{{ reportForm.order=='desc'?'降序':'升序' }} ›</text>
+										</view>
+									</picker>
+									<picker :range="['前 5 项','前 10 项','全部']"
+										@change="reportForm.top=[5,10,1000][$event.detail.value]">
+										<view class="setting-row"><text class="row-title grow">显示数量</text><text
+												class="secondary">{{ reportForm.top==1000?'全部':'前 '+reportForm.top+' 项' }}
+												›</text></view>
+									</picker>
+								</view>
+								<text class="group-label">实时预览</text>
+								<view class="surface chart-card"><xj-chart :groups="reportPreview"
+										:chart="reportForm.chart" :accent="accent"
+										:count="reportForm.metric=='count'" /><text
+										class="row-caption centered">{{ reportPreview.length }} 个分组 ·
+										点击保存后可钻取原始记录</text></view>
+								<button class="primary-btn" :style="accentBg" @click="submitReport">保存方案</button><text
+									class="body-copy">金额统计不混合币种；“全部”收支金额不含转账。自定义数值仅统计已填写的有效数字，显示两位小数。</text>
+							</template>
+
+							<template v-if="page == 'report-view' && space">
+								<text class="page-title">{{ reportForm.name }}</text><text
+									class="body-copy">{{ reportForm.period=='all'?'全部时间':reportForm.period }} ·
+									{{ metricLabels[metricOptions.indexOf(reportForm.metric)] }}</text>
+								<view class="surface chart-card"><xj-chart :groups="reportPreview"
+										:chart="reportForm.chart" :accent="accent"
+										:count="reportForm.metric=='count'" />
+									<view v-for="g in reportPreview" :key="g.name" class="setting-row"
+										@click="drillInto(g,reportForm)"><text
+											class="row-title grow">{{ g.name }}</text><text
+											class="money-value">{{ reportForm.metric=='count'?g.value:money(g.value) }}</text><text
+											class="chevron">›</text></view><text v-if="!reportPreview.length"
+										class="body-copy">当前筛选条件下暂无数据。</text>
+								</view>
+							</template>
+
+							<template v-if="page == 'drill' && space">
+								<text class="page-title">{{ drillName }}</text><text
+									class="body-copy">{{ drillRecords.length }} 条原始记录 · 与图表使用相同筛选条件</text>
+								<view class="surface">
+									<view v-for="t in drillRecords" :key="t.id" class="setting-row"
+										@click="showCrossBookRecord(t)">
+										<view class="grow"><text
+												class="row-title">{{ recordTitle(currentBook(space,t.bookId),t) }}</text><text
+												class="row-caption">{{ t.date }} ·
+												{{ currentBook(space,t.bookId).name }}</text></view><text
+											class="money-value">{{ money(t.cents) }}</text><text
+											class="chevron">›</text>
+									</view>
+								</view>
+							</template>
+
+							<template v-if="page == 'budget' && book">
+								<text class="page-title">月度预算</text>
+								<view class="surface chart-card"><text class="secondary">本月已使用</text><text
+										class="stats-number" :style="accentText">{{ budgetPercent }}%</text>
+									<view class="progress-track">
+										<view class="progress-fill"
+											:style="{width:Math.min(100,budgetPercent)+'%',backgroundColor:accent}" />
+									</view><text class="body-copy">{{ book.currency }} {{ money(totals.expense) }} /
+										{{ money(book.budget) }}</text>
+								</view><text class="group-label">设置当前账本月度预算</text>
+								<view class="surface"><input v-model="budgetInput" type="digit" class="form-input"
+										placeholder="输入预算金额" /></view><button class="primary-btn" :style="accentBg"
+									@click="saveBudget">保存预算</button><text
+									v-if="book.budget>0 && totals.expense>book.budget" class="body-copy">本月已超出预算
+									{{ book.currency }} {{ money(totals.expense-book.budget) }}，可以调整后续支出计划。</text>
+							</template>
+
+							<template v-if="page == 'settings' && space">
+								<text class="page-title">我的</text>
+								<view class="profile-row"><xj-asset name="logo" :size="58" />
+									<view class="transaction-copy"><text
+											class="section-title">{{ space.name }}</text><text
+											class="row-caption">记录生活的你</text><text class="row-caption">完全离线 ·
+											本地加密</text></view>
+								</view>
+						<view class="surface">
+							<view class="setting-row" @click="go('books')"><text
+									class="row-title grow">账本管理</text><text
+									class="secondary">{{ space.books.length }} 个 ›</text></view>
+									<view class="setting-row" @click="openCatalog('expense')"><text
+											class="row-title grow">分类管理</text><text class="chevron">›</text></view>
+									<view class="setting-row" @click="openCatalog('object')"><text
+											class="row-title grow">往来对象</text><text class="chevron">›</text></view>
+							<view class="setting-row" @click="go('fields')"><text
+									class="row-title grow">字段配置</text><text class="chevron">›</text></view>
+							<view class="setting-row" @click="go('budget')"><text
+									class="row-title grow">预算管理</text><text class="chevron">›</text></view>
+						</view>
+								<view class="surface">
+									<view class="setting-row" @click="go('theme')"><text
+											class="row-title grow">主题设置</text>
+										<view class="mini-swatch" :style="accentBg" /><text class="chevron">›</text>
+									</view>
+									<view class="setting-row" @click="go('security')"><text
+											class="row-title grow">安全与隐私</text><text class="chevron">›</text></view>
+									<view class="setting-row" @click="go('backup')"><text
+											class="row-title grow">备份与恢复</text><text class="chevron">›</text></view>
+								</view>
+								<view v-if="legacyAvailable" class="surface">
+									<view class="setting-row" @click="migrateLegacy"><text
+											class="row-title grow">导入旧版活动账本</text><text class="chevron">›</text></view>
+									<view class="setting-row" @click="openLegacy"><text
+											class="row-title grow">打开旧版（原始数据保留）</text><text class="chevron">›</text>
+									</view>
+								</view>
+								<button class="outline-btn" :style="accentText" @click="lockNow">锁定并退出</button><text
+									class="footnote" @click="versionTap">小金账 2.0 · 你的数据，由你掌控</text>
+							</template>
+
+							<template v-if="page == 'theme' && space">
+								<text class="page-title">选择你喜欢的颜色</text><text class="body-copy">留白与中性色，让每一笔更清晰。</text>
+								<view class="surface theme-preview"><text class="secondary">本月结余</text><text
+										class="balance-number" :style="{color:themeDraft}">¥ 3,268.00</text><text
+										class="row-caption">主题预览 · 示例金额</text></view>
+								<view class="theme-grid">
+									<view v-for="c in themes" :key="c.color" class="theme-option"
+										:style="{borderColor:themeDraft==c.color?c.color:'#FFFFFF'}"
+										@click="themeDraft=c.color">
+										<view class="theme-swatch" :style="{backgroundColor:c.color}"><text
+												class="swatch-check">{{ themeDraft==c.color?'✓':'' }}</text></view><text
+											class="row-title">{{ c.name }}</text>
+									</view>
+								</view><button class="primary-btn" :style="{backgroundColor:themeDraft}"
+									@click="saveTheme">使用这个主题</button>
+							</template>
+
+							<template v-if="page == 'security' && space">
+								<view class="page-intro"><xj-asset name="shield" :size="62" /><text
+										class="hero-title">安全与隐私</text><text
+										class="body-copy">不同密码开启不同空间，其他空间的数据和账本不可见。</text></view>
+								<view class="surface">
+									<view class="setting-row" @click="go('password-change')"><text
+											class="row-title grow">修改空间密码</text><text class="chevron">›</text></view>
+									<view class="setting-row"><text class="row-title grow">进入后台后锁定</text><text
+											class="secondary">立即</text></view>
+									<view class="setting-row"><text class="row-title grow">本地数据加密</text><text
+											class="secondary">已启用</text></view>
+									<view class="setting-row"><text class="row-title grow">生物识别</text><text
+											class="secondary">暂未接入</text></view>
+								</view>
+								<text class="group-label">隐私空间</text>
+								<view class="surface">
+									<view class="setting-row" @click="beginSpace(true)"><text
+											class="row-title grow">创建独立空间</text><text class="chevron">›</text></view>
+									<picker v-if="space.private" :range="['输入密码','长按 Logo 后输入密码','点击版本号 5 次后输入密码']"
+										@change="setEntry($event.detail.value)">
+										<view class="setting-row"><text class="row-title grow">辅助入口</text><text
+												class="secondary">{{ space.entry=='logo'?'长按 Logo':space.entry=='version'?'点击版本号':'输入密码' }}
+												›</text></view>
+									</picker>
+								</view>
+								<view class="notice"><text class="notice-title">退出后立即保护</text><text
+										class="body-copy">锁定会清除当前页面和内存会话。Android
+										启用系统安全窗口；其他平台的最近任务保护需真机确认。辅助入口始终需要密码验证。</text></view><text
+									class="body-copy">请妥善保存密码。目前未启用恢复密钥，无法通过服务器找回密码。</text><button class="primary-btn"
+									:style="accentBg" @click="lockNow">安全退出</button>
+							</template>
+
+							<template v-if="page == 'password-change'"><text class="group-label">当前密码</text>
+								<view class="surface"><input v-model="oldPassword" password class="form-input"
+										type="number" :maxlength="6" placeholder="请输入当前 6 位密码" /></view><text
+									class="group-label">新密码</text>
+								<view class="surface"><input v-model="newPassword" password class="form-input"
+										type="number" :maxlength="6" placeholder="新的 6 位密码" /></view><text
+									class="group-label">确认新密码</text>
+								<view class="surface"><input v-model="confirmPassword" password class="form-input"
+										type="number" :maxlength="6" placeholder="再次输入新密码" /></view><button
+									class="primary-btn" :style="accentBg" :disabled="busy"
+									@click="submitPassword">修改密码</button><text
+									class="body-copy">旧备份仍需要备份时的密码，请在修改密码后重新导出备份。</text>
+							</template>
+
+							<template v-if="page == 'backup' && space">
+								<view class="page-intro"><xj-asset name="backup" :size="62" /><text
+										class="hero-title">你的数据，始终在本地</text><text
+										class="body-copy">导出当前空间的加密备份，或从本地文件恢复。</text></view>
+								<view class="surface">
+									<view class="setting-row" @click="exportBackup">
+										<view class="grow"><text class="row-title">导出加密备份</text><text
+												class="row-caption">包含当前空间账本、记录、字段与统计方案</text></view><text
+											class="chevron">›</text>
+									</view>
+									<view class="setting-row" @click="go('restore')">
+										<view class="grow"><text class="row-title">从备份恢复</text><text
+												class="row-caption">校验、预览后选择恢复策略</text></view><text
+											class="chevron">›</text>
+									</view>
+									<view class="setting-row" @click="openRollback"><text
+											class="row-title grow">恢复前快照回滚</text><text class="chevron">›</text></view>
+								</view>
+								<view v-if="exportText" class="surface transfer-panel"><text
+										class="section-title">备份已生成</text><text
+										class="body-copy">文件需要当前密码才能打开。请保存在安全位置。</text><textarea :value="exportText"
+										class="text-area" :maxlength="-1" disabled /><button class="primary-btn"
+										:style="accentBg" @click="saveBackupFile">保存备份文件</button><text
+										class="text-action centered" @click="copyBackup">复制加密内容</text></view>
+								<text class="body-copy">备份不会包含其他密码空间。卸载应用或清理应用数据会丢失本地记录，请保留独立备份。</text>
+							</template>
+
+							<template v-if="page == 'restore'">
+								<text class="page-title">恢复本地备份</text><text
+									class="body-copy">先验证文件与密码，再预览内容。检查阶段不会修改现有数据。</text><button class="outline-btn"
+									:style="accentText" @click="chooseBackup">选择备份文件</button><text
+									class="group-label">或粘贴完整备份内容</text><textarea v-model="importText" class="text-area"
+									placeholder="粘贴小金账加密备份" :maxlength="-1" /><text class="group-label">备份密码</text>
+								<view class="surface"><input v-model="backupPassword" class="form-input" password
+										placeholder="输入备份时的空间密码" /></view><button class="primary-btn" :style="accentBg"
+									:disabled="busy" @click="checkBackup">{{ busy?'正在校验…':'校验并预览' }}</button>
+								<view v-if="importPreview" class="surface restore-preview"><text
+										class="section-title">备份内容</text>
+									<view class="setting-row"><text class="secondary grow">空间</text><text
+											class="row-title">{{ importPreview.name }}</text></view>
+									<view class="setting-row"><text class="secondary grow">账本 / 记录</text><text
+											class="row-title">{{ importPreview.books.length }} /
+											{{ importPreview.transactions.length }}</text></view><text
+										class="body-copy">已通过密码验证与数据结构检查。</text>
+									<view v-if="space" class="chips-wrap"><text class="filter-chip"
+											:style="restoreMode=='merge'?accentText:{}"
+											@click="restoreMode='merge'">合并当前空间</text><text class="filter-chip"
+											:style="restoreMode=='replace'?accentText:{}"
+											@click="restoreMode='replace'">覆盖当前空间</text></view><text v-else
+										class="body-copy">创建新的数据空间，需要设置独立的 6 位密码。</text><input v-if="!space"
+										v-model="restorePin" class="compact-input" type="number" password :maxlength="6"
+										placeholder="新空间密码" /><button class="primary-btn" :style="accentBg"
+										:disabled="busy" @click="confirmRestore">确认恢复</button><text
+										class="footnote">恢复到现有空间前，自动保存加密回滚快照。</text>
+								</view>
+							</template>
+							<view class="content-end" />
+						</view>
+					</scroll-view>
+					<view v-if="isTab && space && !wide" class="tabbar"
+						:style="{paddingBottom:Math.max(bottomInset,12)+'px'}">
+						<view v-for="tab in tabs" :key="tab.page" class="tab-item" @click="switchTab(tab.page)"
+							@longpress="tab.page=='settings'?lockNow():null">
+							<xj-asset :name="tab.icon" :size="22"
+								:tint="page==tab.page?accentSoft:'#EAEFF4'" /><text class="tab-label"
+								:style="page==tab.page?accentText:{}">{{ tab.name }}</text>
+						</view>
+					</view>
+				</view>
+			</view>
+		</template>
+
+		<view v-if="sheet" class="modal-mask" @click="closeSheet">
+			<view class="sheet" @click.stop="noop">
+				<view class="sheet-handle" /><text class="section-title">{{ sheetTitle }}</text><text
+					class="body-copy">{{ sheetCopy }}</text>
+				<view v-for="option in sheetOptions" :key="option.value" class="sheet-option"
+					@click="chooseSheet(option.value)"><text class="row-title"
+						:style="option.danger?{color:'#DF5269'}:accentText">{{ option.label }}</text></view><input
+					v-if="sheet=='delete-book' || sheet=='rollback'" v-model="confirmation" class="compact-input"
+					:password="sheet=='rollback'" :placeholder="sheet=='rollback'?'输入当前密码':'输入完整账本名称'" /><button
+					v-if="sheet=='delete-book' || sheet=='rollback'" class="primary-btn" :style="accentBg"
+					@click="confirmDanger">{{ sheet=='rollback'?'回滚快照':'永久删除' }}</button><text v-if="sheetError"
+					class="error-text">{{ sheetError }}</text><button class="cancel-btn" @click="closeSheet">取消</button>
+			</view>
+		</view>
+		<view v-if="toastText" class="toast"><text class="toast-text">{{ toastText }}</text><text v-if="undoTransaction"
+				class="toast-undo" @click="undoDelete">撤销</text></view>
+	</view>
+</template>
+
+<script setup lang="ts">
+	import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+	import * as vault from '@/common/xiaojin/vault'
+	import { migrateLegacyInto } from '@/common/xiaojin/legacy'
+	import { themes, fieldTypes, createBook, newTransaction, newReport, currentBook, money, cents, clone, id, nowDate, label, recordTitle, fieldVisible, saveTransaction, query, summary, aggregate, duplicateBook, removeBook, mergeSpace, validateSpace } from '@/common/xiaojin/model'
+	import type { Space, Book, Transaction, Field, Entity, Report } from '@/common/xiaojin/model'
+	// #ifdef APP
+	import { randomHex, protectScreen } from '@/uni_modules/xj-security'
+	vault.setEntropy(randomHex)
+	// #endif
+
+	const page = ref('welcome'), history = ref<string[]>([]), space = ref<Space | null>(null), bookId = ref(''), error = ref(''), busy = ref(false)
+	const topInset = ref(0), bottomInset = ref(0), wide = ref(false), legacyAvailable = ref(false)
+	const book = computed(() => space.value?.books.find(b => b.id === bookId.value) || null)
+	const accent = computed(() => space.value?.theme || themes[0].color), accentBg = computed(() => ({ backgroundColor: accent.value })), accentText = computed(() => ({ color: accent.value })), selectedSegment = { backgroundColor: '#FFFFFF' }
+	const tabs = [{ page: 'home', name: '首页', icon: 'home' }, { page: 'books', name: '账本', icon: 'book' }, { page: 'stats', name: '统计', icon: 'chart' }, { page: 'settings', name: '我的', icon: 'user' }]
+	const accentSoft = computed(() => { const h = accent.value; return 'rgba(' + parseInt(h.slice(1, 3), 16) + ',' + parseInt(h.slice(3, 5), 16) + ',' + parseInt(h.slice(5, 7), 16) + ',0.12)' })
+	const shortcuts = [{ page: 'entry', name: '记一笔', icon: 'record' }, { page: 'books', name: '账本', icon: 'book' }, { page: 'stats', name: '统计', icon: 'chart' }, { page: 'settings', name: '偏好', icon: 'user' }]
+	const isTab = computed(() => tabs.some(t => t.page === page.value)), title = computed(() => ({ 'space-new': '数据空间', 'entry': '记一笔', 'records': '记录', 'books': '我的账本', 'book-new': '创建账本', 'book-edit': '编辑账本', 'book-manage': '账本管理', 'detail': '记录详情', 'fields': '字段配置', 'field-edit': '编辑字段', 'catalog': '配置管理', 'entity-edit': '编辑配置', 'entity-detail': '对象详情', 'report-edit': '统计设计器', 'report-view': '统计分析', 'drill': '记录明细', 'budget': '预算', 'theme': '主题设置', 'security': '安全与隐私', 'backup': '备份与恢复', 'restore': '恢复备份', 'password-change': '修改密码' } as Record<string, string>)[page.value] || '小金账')
+	const period = ref(nowDate().slice(0, 7)), periodLabel = computed(() => period.value === nowDate().slice(0, 7) ? '本月' : period.value), todayLabel = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })
+	const calendarWeekdays = ['日', '一', '二', '三', '四', '五', '六'], recordDay = ref('')
+	const recordCalendarCells = computed(() => { const parts = period.value.split('-'); const year = Number(parts[0]); const month = Number(parts[1]); const leading = new Date(year, month - 1, 1).getDay(); const total = new Date(year, month, 0).getDate(); const cells : number[] = []; for (let i = 0; i < leading; i++) cells.push(0); for (let day = 1; day <= total; day++) cells.push(day); return cells })
+	function recordDateKey(day : number) { return period.value + '-' + String(day).padStart(2, '0') }
+	const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'delete'], pin = ref(''), firstPin = ref(''), spaceName = ref('我的空间'), privateDraft = ref(false), lockSeconds = ref(0)
+	const amountKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'delete']
+	const countdown = computed(() => String(Math.floor(lockSeconds.value / 60)).padStart(2, '0') + ':' + String(lockSeconds.value % 60).padStart(2, '0'))
+	let tick : any = null, toastTimer : any = null, pinTimer : any = null
+	const EDGE_BACK_WIDTH = 24, EDGE_BACK_DISTANCE = 72, EDGE_BACK_FAST_DISTANCE = 42, EDGE_BACK_MAX_VERTICAL = 48, EDGE_BACK_MIN_VELOCITY = 0.35, ROOT_EXIT_WINDOW = 2000
+	let viewportWidth = 0, edgeBackActive = false, edgeBackDirection = 0, edgeBackStartX = 0, edgeBackStartY = 0, edgeBackX = 0, edgeBackY = 0, edgeBackStartedAt = 0
+	let generation = 0, rootBackAt = 0
+	const toastText = ref(''), undoTransaction = ref<Transaction | null>(null)
+	function toast(text : string) { toastText.value = text; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastText.value = ''; undoTransaction.value = null }, 5000) }
+	function noop() { }
+	function initialize() { error.value = ''; try { page.value = vault.initialized() ? 'lock' : 'welcome'; lockSeconds.value = vault.remaining(); legacyAvailable.value = !!uni.getStorageSync('nice-tally.ledger.v1') } catch (e) { error.value = message(e); page.value = 'fault' } }
+	function message(e : any) { return e?.message || '操作失败，请重试' }
+	function resetRootExit() { rootBackAt = 0 }
+	function go(next : string) { resetRootExit(); if (['fields', 'budget', 'stats', 'records'].includes(next) && !book.value) next = 'books'; if (next === 'theme') themeDraft.value = accent.value; if (next === 'budget') budgetInput.value = money(book.value?.budget || 0); history.value.push(page.value); page.value = next; error.value = '' }
+	function back() { resetRootExit(); if (page.value === 'entry' && (amount.value || entry.value.note)) { openSheet('leave-entry', '离开记账？', '可以保存草稿，稍后继续。', [{ label: '保存草稿', value: 'draft' }, { label: '放弃本次修改', value: 'discard' }]); return } page.value = history.value.pop() || (space.value ? 'home' : 'welcome'); error.value = '' }
+	function requestRootExit() : boolean {
+		// #ifdef APP
+		const now = Date.now()
+		if (rootBackAt > 0 && now - rootBackAt <= ROOT_EXIT_WINDOW) {
+			resetRootExit()
+			uni.exit({})
+			return true
+		}
+		rootBackAt = now
+		uni.showToast({ title: '再按一次返回桌面', icon: 'none', duration: ROOT_EXIT_WINDOW })
+		return true
+		// #endif
+		// #ifndef APP
+		return false
+		// #endif
+	}
+	function requestBack() : boolean {
+		if (sheet.value) { resetRootExit(); closeSheet(); return true }
+		if (page.value === 'pin-setup') { resetRootExit(); cancelSetup(); return true }
+		if (page.value === 'home') return requestRootExit()
+		if (isTab.value) { back(); return true }
+		if (['welcome', 'lock', 'fault'].includes(page.value)) { resetRootExit(); return false }
+		back(); return true
+	}
+	function resetEdgeBack() { edgeBackActive = false; edgeBackDirection = 0 }
+	function edgeBackStart(e : TouchEvent) {
+		resetEdgeBack()
+		if (wide.value || !requestBackAvailable() || e.touches.length != 1) return
+		const touch = e.touches[0], x = touch.clientX
+		if (x <= EDGE_BACK_WIDTH) edgeBackDirection = 1
+		else if (x >= viewportWidth - EDGE_BACK_WIDTH) edgeBackDirection = -1
+		else return
+		edgeBackActive = true; edgeBackStartX = x; edgeBackStartY = touch.clientY; edgeBackX = x; edgeBackY = touch.clientY; edgeBackStartedAt = Date.now()
+	}
+	function edgeBackMove(e : TouchEvent) {
+		if (!edgeBackActive || e.touches.length != 1) return
+		const touch = e.touches[0], dx = touch.clientX - edgeBackStartX, dy = touch.clientY - edgeBackStartY
+		edgeBackX = touch.clientX; edgeBackY = touch.clientY
+		if (Math.abs(dy) > 18 && Math.abs(dy) > Math.abs(dx)) { resetEdgeBack(); return }
+		if (dx * edgeBackDirection <= 8 || Math.abs(dx) <= Math.abs(dy)) return
+		// #ifdef WEB
+		if (e.cancelable) e.preventDefault()
+		// #endif
+		// #ifndef WEB
+		e.preventDefault()
+		// #endif
+	}
+	function edgeBackEnd(e : TouchEvent) {
+		if (!edgeBackActive) return
+		if (e.changedTouches.length > 0) { edgeBackX = e.changedTouches[0].clientX; edgeBackY = e.changedTouches[0].clientY }
+		const dx = edgeBackX - edgeBackStartX, dy = edgeBackY - edgeBackStartY, travel = dx * edgeBackDirection, duration = Math.max(1, Date.now() - edgeBackStartedAt)
+		const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25, enough = travel >= EDGE_BACK_DISTANCE || (travel >= EDGE_BACK_FAST_DISTANCE && travel / duration >= EDGE_BACK_MIN_VELOCITY)
+		resetEdgeBack()
+		if (horizontal && Math.abs(dy) <= EDGE_BACK_MAX_VERTICAL && enough) requestBack()
+	}
+	function edgeBackCancel(_e : TouchEvent) { resetEdgeBack() }
+	function requestBackAvailable() : boolean { return !!sheet.value || page.value === 'pin-setup' || (!isTab.value && !['welcome', 'lock', 'fault'].includes(page.value)) }
+	function switchTab(next : string) { resetRootExit(); if (page.value === 'entry' && (amount.value || entry.value.note)) { openSheet('leave-entry', '离开记账？', '可以保存草稿，稍后继续。', [{ label: '保存草稿', value: 'draft' }, { label: '放弃本次修改', value: 'discard' }]); return } if (next === 'entry') { openEntry(); return } if (['home', 'records', 'stats'].includes(next) && !book.value) { go('books'); return } history.value = []; page.value = next; error.value = '' }
+	function quick(next : string) { if (next === 'entry') openEntry(); else go(next) }
+	function lockNow() {
+		resetRootExit(); generation++; clearTimeout(pinTimer); clearTimeout(toastTimer); vault.lock()
+		space.value = null; bookId.value = ''; history.value = []; pin.value = ''; firstPin.value = ''; error.value = ''; sheet.value = ''
+		exportText.value = ''; importText.value = ''; backupPassword.value = ''; restorePin.value = ''; importPreview.value = null; restoreMode.value = 'merge'
+		selected.value = null; entry.value = {} as Transaction; amount.value = ''; saveError.value = ''; search.value = ''; fieldFilters.value = {}; categoryFilter.value = ''; minAmount.value = ''; maxAmount.value = ''
+		reportForm.value = {} as Report; fieldForm.value = {} as Field; entityForm.value = {} as Entity; fieldOptionsText.value = ''; entitySearch.value = ''; drillIds.value = []; drillName.value = ''
+		bookForm.value = { name: '', icon: 'book', color: themes[0].color, type: '个人账本', currency: '¥' }; themeDraft.value = themes[0].color; budgetInput.value = ''
+		oldPassword.value = ''; newPassword.value = ''; confirmPassword.value = ''; toastText.value = ''; undoTransaction.value = null; busy.value = false; spaceName.value = '我的空间'; privateDraft.value = false; confirmation.value = ''; sheetTitle.value = ''; sheetCopy.value = ''; sheetOptions.value = []; sheetError.value = ''; period.value = nowDate().slice(0, 7); showArchived.value = false
+		try { page.value = vault.initialized() ? 'lock' : 'welcome' } catch (e) { error.value = message(e); page.value = 'fault' }
+	}
+	function routeSpace() { if (!space.value) return; const b = space.value.books.find(b => b.id === space.value!.defaultBookId && !b.archived) || space.value.books.find(b => !b.archived); bookId.value = b?.id || ''; page.value = b ? 'home' : 'books'; history.value = [] }
+	function beginSpace(privacy : boolean) { spaceName.value = privacy ? '独立空间' : '我的空间'; privateDraft.value = privacy; go('space-new') }
+	function startPinSetup() { if (!spaceName.value.trim()) { error.value = '请填写空间名称'; return } firstPin.value = ''; pin.value = ''; go('pin-setup') }
+	function cancelSetup() { pin.value = ''; firstPin.value = ''; page.value = history.value.pop() || 'space-new'; error.value = '' }
+	function pressPin(key : string) { if (busy.value || lockSeconds.value > 0) return; if (key === 'delete') { pin.value = pin.value.slice(0, -1); return } if (pin.value.length >= 6) return; pin.value += key; if (pin.value.length === 6) { const code = pin.value; const epoch = generation; busy.value = true; pinTimer = setTimeout(async () => { if (epoch !== generation) return; try { let next : Space; if (page.value === 'pin-setup') { if (!firstPin.value) { firstPin.value = code; pin.value = ''; return } if (code !== firstPin.value) { firstPin.value = ''; throw new Error('两次密码不一致，请重新设置') } next = await vault.registerAsync(spaceName.value, privateDraft.value, code) } else next = await vault.unlockAsync(code); if (epoch !== generation) { vault.lock(); return } space.value = next; pin.value = ''; firstPin.value = ''; error.value = ''; routeSpace() } catch (e) { if (epoch === generation) { error.value = message(e); pin.value = ''; lockSeconds.value = vault.remaining() } } finally { if (epoch === generation) busy.value = false } }, 40) } }
+	function pressAmountKey(key : string) { if (key === 'delete') { amount.value = amount.value.slice(0, -1); return } if (key === '.') { if (!amount.value) { amount.value = '0.'; return } if (amount.value.includes('.')) return } const decimals = amount.value.includes('.') ? amount.value.split('.')[1].length : 0; if (decimals >= 2 || amount.value.length >= 11) return; if (amount.value === '0' && key !== '.') amount.value = key; else amount.value += key }
+	function helpUnlock() { openSheet('help', '无法解锁？', '密码不会上传服务器。当前版本未启用恢复密钥，忘记密码无法找回该空间。已有备份也需要备份时的密码。', [{ label: '从已知密码的备份恢复', value: 'restore' }]) }
+	function commit(change : (s : Space) => void) : boolean { if (!space.value) { error.value = '请先解锁'; return false } try { const next = clone(space.value); change(next); vault.persist(next); space.value = next; error.value = ''; return true } catch (e) { error.value = message(e); return false } }
+	const showArchived = ref(false), visibleBooks = computed(() => space.value?.books.filter(b => b.archived === showArchived.value) || [])
+	const bookTypes = ['个人账本', '家庭账本', '旅行账本', '项目账本'], currencies = ['¥', 'US$', '€', 'HK$'], bookIcons = ['book', 'home', 'family', 'travel', 'work'], bookIconLabels = ['日常', '生活', '家庭', '旅行', '项目']
+	const bookForm = ref({ name: '', icon: 'book', color: themes[0].color, type: '个人账本', currency: '¥' })
+	function newBook() { bookForm.value = { name: '', icon: 'book', color: accent.value, type: '个人账本', currency: '¥' }; go('book-new') }
+	function submitBook() { if (busy.value) return; busy.value = true; try { const f = bookForm.value; if (commit(s => { if (page.value === 'book-edit') { const b = currentBook(s, bookId.value); if (!f.name.trim()) throw new Error('请输入账本名称'); Object.assign(b, f, { name: f.name.trim() }) } else { const b = createBook(f.name, f.color, f.type, f.currency); b.icon = f.icon; s.books.push(b); if (!s.defaultBookId) s.defaultBookId = b.id; } })) { if (page.value === 'book-new') bookId.value = space.value!.books[space.value!.books.length - 1].id; page.value = 'home'; history.value = []; toast('账本已保存') } } finally { busy.value = false } }
+	function selectBook(b : Book) { bookId.value = b.id; if (b.archived) go('book-manage'); else { page.value = 'home'; history.value = [] } }
+	function manageBook(b : Book) { bookId.value = b.id; go('book-manage') }
+	function editBook() { if (!book.value) return; const b = book.value; bookForm.value = { name: b.name, icon: b.icon, color: b.color, type: b.type, currency: b.currency }; go('book-edit') }
+	function defaultBook() { if (book.value?.archived) { error.value = '请先恢复归档账本'; return } if (commit(s => s.defaultBookId = bookId.value)) toast('已设为默认账本') }
+	function archiveBook() { if (book.value?.archived) { if (commit(s => currentBook(s, bookId.value).archived = false)) toast('账本已恢复'); return } openSheet('archive', '归档「' + book.value?.name + '」？', '归档后不会删除任何记录，仍可参与统计，并可随时恢复。', [{ label: '归档账本', value: 'confirm' }]) }
+	function openCopy() { openSheet('copy-book', '复制「' + book.value?.name + '」', '默认不复制历史交易，请选择复制范围。', [{ label: '仅复制基本配置', value: 'config' }, { label: '配置 + 分类 + 字段（推荐）', value: 'fields' }, { label: '包含全部交易', value: 'all' }]) }
+	function deleteBook() { openSheet('delete-first', '删除「' + book.value?.name + '」？', '将永久删除 ' + bookCount(bookId.value) + ' 笔记录、' + (book.value?.fields.length || 0) + ' 个字段与 ' + (book.value?.reports.length || 0) + ' 个统计方案。此操作不可撤销。', [{ label: '继续删除', value: 'confirm', danger: true }]) }
+	const monthly = computed(() => space.value && book.value ? query(space.value, [bookId.value], period.value) : []), totals = computed(() => summary(monthly.value)), recent = computed(() => monthly.value.slice(0, 5)), drafts = computed(() => space.value?.transactions.filter(t => t.bookId === bookId.value && t.draft) || [])
+	const bookCount = (key : string) => space.value?.transactions.filter(t => t.bookId === key && !t.draft).length || 0
+	const bookExpense = (key : string) => space.value ? summary(query(space.value, [key], period.value)).expense : 0
+	const entityIcon = (t : Transaction) => book.value?.entities.find(e => e.id === t.categoryId)?.icon || 'record'
+	const search = ref(''), kindFilter = ref('all'), categoryFilter = ref(''), advancedFilters = ref(false), minAmount = ref(''), maxAmount = ref(''), fieldFilters = ref<Record<string, string>>({})
+	const transactionKinds = ['expense', 'income', 'transfer'], transactionLabels = ['支出', '收入', '转账'], kindOptions = ['all', 'expense', 'income', 'transfer'], kindLabels = ['全部', '支出', '收入', '转账']
+	const filtered = computed(() => { if (!space.value || !book.value) return []; return query(space.value, [bookId.value], period.value, kindFilter.value, categoryFilter.value, search.value).filter(t => (!recordDay.value || t.date === recordDay.value) && (!minAmount.value || t.cents >= Number(minAmount.value) * 100) && (!maxAmount.value || t.cents <= Number(maxAmount.value) * 100) && Object.keys(fieldFilters.value).every(k => !fieldFilters.value[k] || String(t.values[k] || '').includes(fieldFilters.value[k]))) })
+	function clearFilters() { search.value = ''; kindFilter.value = 'all'; categoryFilter.value = ''; minAmount.value = ''; maxAmount.value = ''; fieldFilters.value = {} }
+	const entry = ref<Transaction>({} as Transaction), amount = ref(''), moreFields = ref(false), keepEntering = ref(false), saveError = ref('')
+	const entryCategories = computed(() => book.value?.entities.filter(e => e.enabled && e.kind === entry.value.kind) || []), accountOptions = computed(() => [{ id: '', name: '未设置' }, ...(book.value?.entities.filter(e => e.kind === 'account' && e.enabled) || [])]), objectOptions = computed(() => [{ id: '', name: '未设置' }, ...(book.value?.entities.filter(e => e.kind === 'object' && e.enabled) || [])])
+	const visibleFields = computed(() => book.value?.fields.filter(f => fieldVisible(f, entry.value, book.value!.fields)).sort((a, b) => a.order - b.order) || [])
+	function openEntry() { if (!book.value) { go('books'); return } if (book.value.archived) { error.value = '请先恢复归档账本'; return } entry.value = newTransaction(book.value); amount.value = ''; moreFields.value = false; saveError.value = ''; go('entry') }
+	function changeKind(k : string) { entry.value.kind = k as any; entry.value.categoryId = ''; saveError.value = '' }
+	function editRecord(t : Transaction) { entry.value = clone(t); amount.value = money(t.cents); moreFields.value = true; saveError.value = ''; go('entry') }
+	function submitEntry(draft : boolean) { if (!book.value || busy.value) return; busy.value = true; try { const t = clone(entry.value); t.cents = amount.value ? cents(amount.value) : 0; t.draft = draft; if (commit(s => saveTransaction(s, t))) { amount.value = ''; entry.value.note = ''; if (draft) { page.value = 'home'; history.value = []; toast('草稿已保存') } else if (keepEntering.value) { entry.value = newTransaction(book.value); toast('已保存，继续记一笔') } else { selected.value = t; history.value = ['home']; page.value = 'detail'; toast('记录已保存') } saveError.value = '' } else saveError.value = error.value } catch (e) { saveError.value = message(e) } finally { busy.value = false } }
+	const selected = ref<Transaction | null>(null), detailRows = computed(() => !selected.value || !book.value ? [] : [{ name: '账本', value: book.value.name }, { name: '日期', value: selected.value.date }, { name: '支付方式', value: label(book.value, selected.value.accountId) }, { name: '往来对象', value: label(book.value, selected.value.objectId) }, { name: '备注', value: selected.value.note || '未填写' }])
+	const historicalFields = computed(() => book.value?.fields.filter(f => selected.value?.values[f.id]) || [])
+	function showRecord(t : Transaction) { selected.value = clone(t); go('detail') }
+	function showCrossBookRecord(t : Transaction) { bookId.value = t.bookId; showRecord(t) }
+	function copyRecord() { if (!selected.value) return; const t = clone(selected.value); t.id = id(); t.createdAt = Date.now(); editRecord(t) }
+	function recordActions(t : Transaction) { selected.value = clone(t); openSheet('record-actions', '记录操作', recordTitle(book.value!, t), [{ label: '编辑', value: 'edit' }, { label: '复制', value: 'copy' }, { label: '删除', value: 'delete', danger: true }]) }
+	function deleteRecord() { openSheet('delete-record', '删除这笔记录？', '删除后可在 5 秒内撤销。', [{ label: '删除记录', value: 'confirm', danger: true }]) }
+	function undoDelete() { if (!undoTransaction.value) return; const t = clone(undoTransaction.value); if (commit(s => s.transactions.push(t))) { undoTransaction.value = null; toast('已恢复记录') } }
+	function optionsFor(f : Field) { return f.type === '对象引用' ? objectOptions.value.map(e => e.name) : f.options }
+	function multiSelected(f : Field, o : string) { return (entry.value.values[f.id] || '').split('、').includes(o) }
+	function toggleMulti(f : Field, o : string) { const list = (entry.value.values[f.id] || '').split('、').filter(Boolean); const i = list.indexOf(o); if (i < 0) list.push(o); else list.splice(i, 1); entry.value.values[f.id] = list.join('、') }
+	function chooseAttachment(f : Field) {
+		// #ifdef WEB
+		const input = document.createElement('input'); input.type = 'file'; if (f.type === '图片') input.accept = 'image/*'; input.onchange = () => { const file = input.files?.[0]; if (!file) return; if (file.size > 1024 * 1024) { error.value = '单个附件请控制在 1 MB 以内'; return } const reader = new FileReader(); reader.onload = () => entry.value.values[f.id] = JSON.stringify({ name: file.name, data: reader.result }); reader.readAsDataURL(file) }; input.click(); return
+		// #endif
+		// #ifndef WEB
+		const epoch = generation; uni.chooseFile({ count: 1, type: f.type === '图片' ? 'image' : 'all', success: (res : any) => { if (epoch !== generation) return; const file = res.tempFiles[0]; if (!file) return; if (file.size > 1024 * 1024) { error.value = '单个附件请控制在 1 MB 以内'; return } uni.getFileSystemManager().readFile({ filePath: file.path, encoding: 'base64', success: (data : any) => { if (epoch !== generation) return; const name = file.name || '附件'; const ext = name.split('.').pop()?.toLowerCase(); const mime = ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' } as Record<string, string>)[ext || ''] || 'application/octet-stream'; entry.value.values[f.id] = JSON.stringify({ name, data: 'data:' + mime + ';base64,' + data.data }) }, fail: () => { if (epoch === generation) error.value = '附件读取失败，请检查文件权限' } }) }, fail: () => { if (epoch === generation) error.value = '未选择文件或文件访问被拒绝' } })
+		// #endif
+	}
+	function attachmentLabel(value : string) { try { const a = JSON.parse(value) as { name : string }; return a?.name || '查看附件' } catch { return '附件信息异常' } }
+	function previewAttachment(f : Field) { previewStoredAttachment(f, entry.value.values[f.id]) }
+	function previewStoredAttachment(f : Field, value : string) {
+
+		if (!['图片', '文件'].includes(f.type)) return; try {
+
+			const v = JSON.parse(value) as { name : string; data : string }; if (!v || typeof v.data !== 'string' || !/^data:[a-z0-9.+/-]+;base64,/i.test(v.data)) throw new Error('invalid attachment'); if (f.type === '图片') uni.previewImage({ urls: [v.data] }); else {
+				// #ifdef WEB
+				const a = document.createElement('a'); a.href = v.data; a.download = v.name; a.click()
+				// #endif
+				// #ifndef WEB
+				error.value = '文件已加密保存。当前原生端暂不向外部应用导出明文附件，可通过加密备份在 Web 端读取。'
+				// #endif
+			}
+
+		} catch { error.value = '附件不存在或内容已损坏' }
+
+	}
+	const fieldForm = ref<Field>({} as Field), fieldOptionsText = ref(''), editingField = ref(false)
+	function newField() { fieldForm.value = { id: id(), name: '', type: '文本', options: [], required: false, enabled: true, deleted: false, searchable: true, filterable: true, statistical: false, defaultValue: '', kinds: [], categoryId: '', conditionField: '', conditionValue: '', order: book.value?.fields.length || 0 }; fieldOptionsText.value = ''; editingField.value = false; go('field-edit') }
+	function editField(f : Field) { fieldForm.value = clone(f); fieldOptionsText.value = f.options.join('\n'); editingField.value = true; go('field-edit') }
+	function fieldUsed() { return space.value?.transactions.some(t => t.bookId === bookId.value && t.values[fieldForm.value.id]) }
+	function setFieldType(index : number) { if (editingField.value && fieldUsed()) { error.value = '已有历史值，不能修改字段类型。请新建字段并停用旧字段。'; return } fieldForm.value.type = fieldTypes[index] }
+	const conditionOptions = computed(() => [{ id: '', name: '始终显示' }, { id: 'category', name: '分类' }, { id: 'account', name: '支付方式' }, ...(book.value?.fields.filter(f => f.id !== fieldForm.value.id && f.order < fieldForm.value.order && !f.deleted).map(f => ({ id: f.id, name: f.name })) || [])])
+	const conditionValueOptions = computed(() => book.value?.entities.filter(e => fieldForm.value.conditionField === 'account' ? e.kind === 'account' : ['expense', 'income'].includes(e.kind)) || [])
+	function toggleFieldKind(k : string) { const i = fieldForm.value.kinds.indexOf(k); if (i < 0) fieldForm.value.kinds.push(k); else fieldForm.value.kinds.splice(i, 1) }
+	function submitField() { const f = clone(fieldForm.value); f.name = f.name.trim(); f.options = [...new Set(fieldOptionsText.value.split('\n').map(v => v.trim()).filter(Boolean))]; if (!f.name) { error.value = '请填写字段名称'; return } if (['单选', '多选'].includes(f.type) && !f.options.length) { error.value = '请至少添加一个选项'; return } if (f.conditionField && !f.conditionValue) { error.value = '请设置条件匹配值'; return } if (commit(s => { const b = currentBook(s, bookId.value); if (b.fields.some(v => v.id !== f.id && !v.deleted && v.name === f.name)) throw new Error('字段名称已存在'); const i = b.fields.findIndex(v => v.id === f.id); if (i < 0) b.fields.push(f); else b.fields[i] = f })) { page.value = 'fields'; toast('字段已保存') } }
+	function deleteField() { openSheet('delete-field', '删除「' + fieldForm.value.name + '」？', '字段不再出现在新表单中，历史记录中的字段名称和值继续保留。', [{ label: '删除字段，保留历史值', value: 'confirm', danger: true }]) }
+	function moveField(f : Field, step : number) { if (book.value?.fields.some(v => v.conditionField === f.id) || f.conditionField) { error.value = '含条件依赖的字段暂不支持调整顺序'; return } commit(s => { const fs = currentBook(s, bookId.value).fields.sort((a, b) => a.order - b.order); const i = fs.findIndex(v => v.id === f.id); const j = i + step; if (j < 0 || j >= fs.length) return;[fs[i], fs[j]] = [fs[j], fs[i]]; fs.forEach((v, n) => v.order = n) }) }
+	const catalogKind = ref('expense'), entitySearch = ref(''), entityForm = ref<Entity>({} as Entity)
+	const catalogEntities = computed(() => book.value?.entities.filter(e => e.kind === catalogKind.value && e.name.includes(entitySearch.value)) || []), parentOptions = computed(() => book.value?.entities.filter(e => e.kind === entityForm.value.kind && !e.parentId && e.id !== entityForm.value.id) || [])
+	function openCatalog(kind : string) { if (!book.value) { go('books'); return } catalogKind.value = kind; entitySearch.value = ''; go('catalog') }
+	function newEntity() { entityForm.value = { id: id(), name: '', kind: catalogKind.value, icon: 'book', color: accent.value, enabled: true, parentId: '', note: '' }; go('entity-edit') }
+	function showEntity(e : Entity) { entityForm.value = clone(e); go('entity-detail') }
+	function submitEntity() { if (!entityForm.value.name.trim()) { error.value = '请填写名称'; return } if (commit(s => { const b = currentBook(s, bookId.value); const e = clone(entityForm.value); e.name = e.name.trim(); if (b.entities.some(v => v.id !== e.id && v.kind === e.kind && v.name === e.name)) throw new Error('名称已存在'); const i = b.entities.findIndex(v => v.id === e.id); if (i < 0) b.entities.push(e); else b.entities[i] = e })) { page.value = 'catalog'; toast('配置已保存') } }
+	function toggleEntity() { entityForm.value.enabled = !entityForm.value.enabled; submitEntity() }
+	const entityRecords = computed(() => space.value?.transactions.filter(t => t.bookId === bookId.value && !t.draft && [t.categoryId, t.objectId, t.accountId, t.toAccountId].includes(entityForm.value.id)) || []), entityTotals = computed(() => summary(entityRecords.value))
+	const statKind = ref('expense'), reportForm = ref<Report>({} as Report)
+	const metricOptions = ['sum', 'count', 'avg', 'max', 'min'], metricLabels = ['金额合计', '记录笔数', '平均金额', '最大金额', '最小金额'], chartOptions = ['line', 'bar', 'donut', 'rank', 'number'], chartLabels = ['折线图', '柱状图', '饼图', '排行榜', '数字指标']
+	const dimensions = computed(() => [{ id: 'category', name: '分类' }, { id: 'account', name: '支付方式' }, { id: 'object', name: '往来对象' }, { id: 'date', name: '按日' }, { id: 'month', name: '按月' }, ...(book.value?.fields.filter(f => f.statistical && !f.deleted).map(f => ({ id: f.id, name: f.name })) || [])])
+	const metricFields = computed(() => [{ id: '', name: '交易金额' }, ...(book.value?.fields.filter(f => f.statistical && !f.deleted && ['数字', '金额', '星级'].includes(f.type)).map(f => ({ id: f.id, name: f.name })) || [])])
+	const reportCategories = computed(() => [{ id: '', name: '全部分类' }, ...(book.value?.entities.filter(e => ['expense', 'income'].includes(e.kind)).map(e => ({ id: e.id, name: e.name })) || [])])
+	const defaultReport = computed(() => ({ ...newReport(book.value || ({ id: '' } as Book)), kind: statKind.value, period: period.value })), defaultGroups = computed(() => space.value && book.value ? aggregate(space.value, defaultReport.value) : []), reportPreview = computed(() => space.value && reportForm.value.id ? aggregate(space.value, reportForm.value) : [])
+	function createReport() { if (!book.value) return; reportForm.value = newReport(book.value); go('report-edit') }
+	function editReport(r : Report) { reportForm.value = clone(r); go('report-edit') }
+	function viewReport(r : Report) { reportForm.value = clone(r); go('report-view') }
+	function toggleReportBook(key : string) { const r = reportForm.value; const i = r.bookIds.indexOf(key); if (i < 0) { if (r.metric !== 'count' && space.value!.books.some(b => r.bookIds.includes(b.id) && b.currency !== currentBook(space.value!, key).currency)) { error.value = '不同币种不能直接合计，请分别创建统计方案'; return } r.bookIds.push(key) } else r.bookIds.splice(i, 1) }
+	function submitReport() { const r = clone(reportForm.value); if (!r.name.trim() || !r.bookIds.length) { error.value = '请填写方案名称并选择至少一个账本'; return } if (r.metric !== 'count' && new Set(space.value!.books.filter(b => r.bookIds.includes(b.id)).map(b => b.currency)).size > 1) { error.value = '不同币种不能直接合计，请分别创建方案'; return } if (r.chart === 'donut' && (['date', 'month'].includes(r.dimension) || reportPreview.value.some(g => g.value < 0))) { error.value = '时间趋势或负数请使用折线图或柱状图'; return } if (r.chart === 'line' && !['date', 'month'].includes(r.dimension)) { error.value = '折线图需要按日或按月的时间维度'; return } if (commit(s => { const b = currentBook(s, bookId.value); const i = b.reports.findIndex(v => v.id === r.id); if (i < 0) b.reports.push(r); else b.reports[i] = r })) { page.value = 'stats'; toast('统计方案已保存') } }
+	const drillIds = ref<string[]>([]), drillName = ref(''), drillRecords = computed(() => space.value?.transactions.filter(t => drillIds.value.includes(t.id)) || [])
+	function drillInto(g : any, r : Report) { drillIds.value = g.ids; drillName.value = g.name; go('drill') }
+	const budgetInput = ref(''), budgetPercent = computed(() => book.value?.budget ? Math.round(totals.value.expense / book.value.budget * 100) : 0)
+	function saveBudget() { try { const value = cents(budgetInput.value); if (commit(s => currentBook(s, bookId.value).budget = value)) toast('预算已保存') } catch (e) { error.value = message(e) } }
+	const themeDraft = ref(themes[0].color)
+	function saveTheme() { if (commit(s => s.theme = themeDraft.value)) toast('主题已更新') }
+	function setEntry(index : number) { commit(s => s.entry = ['password', 'logo', 'version'][index]) }
+	let taps = 0
+	function versionTap() { taps++; if (taps >= 5) { taps = 0; lockNow() } }
+	const oldPassword = ref(''), newPassword = ref(''), confirmPassword = ref('')
+	async function submitPassword() { if (busy.value) return; if (newPassword.value !== confirmPassword.value) { error.value = '两次新密码不一致'; return } busy.value = true; try { await vault.changePinAsync(space.value!, oldPassword.value, newPassword.value); oldPassword.value = ''; newPassword.value = ''; confirmPassword.value = ''; page.value = 'security'; toast('密码已修改') } catch (e) { error.value = message(e) } finally { busy.value = false } }
+	const exportText = ref(''), importText = ref(''), backupPassword = ref(''), importPreview = ref<Space | null>(null), restoreMode = ref('merge'), restorePin = ref('')
+	watch([importText, backupPassword], () => { importPreview.value = null })
+	function exportBackup() { try { exportText.value = vault.backup(space.value!); toast('已生成加密备份') } catch (e) { error.value = message(e) } }
+	function copyBackup() { uni.setClipboardData({ data: exportText.value, success: () => toast('已复制加密备份') }) }
+	function saveBackupFile() {
+		// #ifdef WEB
+		const url = URL.createObjectURL(new Blob([exportText.value], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = '小金账-' + nowDate() + '.xjbackup'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); toast('备份文件已导出'); return
+		// #endif
+		// #ifndef WEB
+		const path = uni.env.USER_DATA_PATH + '/xiaojin-' + Date.now() + '.xjbackup'; uni.getFileSystemManager().writeFile({ filePath: path, data: exportText.value, encoding: 'utf-8', success: () => { error.value = '加密文件已保存到 ' + path + '。卸载应用会删除该目录，请另行复制加密内容到独立安全位置。' }, fail: () => { error.value = '备份写入失败，请检查存储空间，或复制加密内容保存。' } })
+		// #endif
+	}
+	function chooseBackup() {
+		// #ifdef WEB
+		const input = document.createElement('input'); input.type = 'file'; input.accept = '.xjbackup,.json'; input.onchange = () => { const file = input.files?.[0]; if (!file) return; if (file.size > 20 * 1024 * 1024) { error.value = '文件超过 20 MB'; return } const reader = new FileReader(); reader.onload = () => { importText.value = String(reader.result); importPreview.value = null }; reader.readAsText(file) }; input.click(); return
+		// #endif
+		// #ifndef WEB
+		const epoch = generation; uni.chooseFile({ count: 1, type: 'all', success: (res : any) => { if (epoch !== generation) return; const file = res.tempFiles[0]; if (!file) return; if (file.size > 20 * 1024 * 1024) { error.value = '文件超过 20 MB'; return } uni.getFileSystemManager().readFile({ filePath: file.path, encoding: 'utf-8', success: (data : any) => { if (epoch !== generation) return; importText.value = String(data.data); importPreview.value = null }, fail: () => { if (epoch === generation) error.value = '无法读取备份文件，请检查权限或粘贴完整内容' } }) }, fail: () => { if (epoch === generation) error.value = '未选择备份文件' } })
+		// #endif
+	}
+	function checkBackup() { if (busy.value) return; busy.value = true; const epoch = generation; setTimeout(async () => { if (epoch !== generation) return; try { const preview = await vault.inspectBackupAsync(importText.value, backupPassword.value); if (epoch !== generation) return; importPreview.value = preview; error.value = '' } catch (e) { if (epoch === generation) { importPreview.value = null; error.value = message(e) } } finally { if (epoch === generation) busy.value = false } }, 40) }
+	function confirmRestore() { if (!importPreview.value) return; openSheet('restore-confirm', '确认恢复备份？', space.value ? (restoreMode.value === 'replace' ? '当前空间的数据将被替换，恢复前会保存加密快照。' : '相同 ID 的记录按更新时间合并，其他记录保留。') : '创建新空间并导入备份中的账本和记录。', [{ label: '执行恢复', value: 'confirm', danger: restoreMode.value === 'replace' }]) }
+	async function performRestore() { if (busy.value) return; busy.value = true; const epoch = generation; try { const source = validateSpace(importPreview.value); if (space.value) { vault.snapshot(space.value); const target = restoreMode.value === 'merge' ? mergeSpace(space.value, source) : Object.assign(source, { id: space.value.id, name: space.value.name, private: space.value.private }); vault.persist(target); space.value = target } else { const restored = await vault.registerAsync(source.name, source.private, restorePin.value, source); if (epoch !== generation) { vault.lock(); return } space.value = restored } importPreview.value = null; importText.value = ''; backupPassword.value = ''; restorePin.value = ''; routeSpace(); toast('数据已恢复') } catch (e) { if (epoch === generation) error.value = message(e) } finally { if (epoch === generation) busy.value = false } }
+	function openRollback() { openSheet('rollback', '回滚到恢复前', '输入当前密码，验证恢复前的加密快照。', []) }
+	function migrateLegacy() { openSheet('legacy', '导入旧版活动账本', '将每位往来对象的金额转换为一笔收入或支出，新建“旧版活动账本”。原始数据继续保留。', [{ label: '导入旧版数据', value: 'confirm' }]) }
+	function doMigrate() { const raw = uni.getStorageSync('nice-tally.ledger.v1'); let count = 0; if (commit(s => { count = migrateLegacyInto(s, typeof raw === 'string' ? raw : JSON.stringify(raw)) })) { toast(count ? '已导入 ' + count + ' 笔旧版记录' : '旧记录已导入，无重复新增') } }
+	function openLegacy() { lockNow(); uni.navigateTo({ url: '/pages/tally/index' }) }
+	const sheet = ref(''), sheetTitle = ref(''), sheetCopy = ref(''), sheetOptions = ref<{ label : string; value : string; danger ?: boolean }[]>([]), confirmation = ref(''), sheetError = ref('')
+	function openSheet(kind : string, title : string, copy : string, options : { label : string; value : string; danger ?: boolean }[]) { sheet.value = kind; sheetTitle.value = title; sheetCopy.value = copy; sheetOptions.value = options; confirmation.value = ''; sheetError.value = '' }
+	function closeSheet() { sheet.value = ''; confirmation.value = ''; sheetError.value = '' }
+	function chooseSheet(value : string) { const kind = sheet.value; closeSheet(); if (kind === 'help') { go('restore'); return } if (kind === 'archive') { if (commit(s => { currentBook(s, bookId.value).archived = true; if (s.defaultBookId === bookId.value) s.defaultBookId = '' })) toast('账本已归档'); return } if (kind === 'copy-book') { let copied = ''; if (commit(s => copied = duplicateBook(s, bookId.value, value).id)) { bookId.value = copied; page.value = 'home'; toast('账本已复制') } return } if (kind === 'delete-first') { openSheet('delete-book', '永久删除账本', '请输入完整账本名称：' + book.value?.name, []); return } if (kind === 'delete-record' && selected.value) { const t = clone(selected.value); if (commit(s => s.transactions = s.transactions.filter(v => v.id !== t.id))) { page.value = 'records'; toast('记录已删除'); undoTransaction.value = t } return } if (kind === 'record-actions') { if (value === 'edit') editRecord(selected.value!); if (value === 'copy') copyRecord(); if (value === 'delete') deleteRecord(); return } if (kind === 'delete-field') { if (commit(s => { const f = currentBook(s, bookId.value).fields.find(f => f.id === fieldForm.value.id)!; f.deleted = true; f.enabled = false })) { page.value = 'fields'; toast('字段已删除，历史值保留') } return } if (kind === 'leave-entry') { if (value === 'draft') submitEntry(true); else { amount.value = ''; page.value = history.value.pop() || 'home' } return } if (kind === 'restore-confirm') { performRestore(); return } if (kind === 'legacy') doMigrate() }
+	async function confirmDanger() { if (sheet.value === 'delete-book') { if (commit(s => removeBook(s, bookId.value, confirmation.value))) { closeSheet(); routeSpace(); toast('账本已永久删除') } else sheetError.value = error.value } else if (sheet.value === 'rollback') { if (busy.value) return; busy.value = true; try { const s = await vault.restoreSnapshotAsync(confirmation.value); vault.persist(s); space.value = s; closeSheet(); routeSpace(); toast('已回滚到恢复前') } catch (e) { sheetError.value = message(e) } finally { busy.value = false } } }
+	function measure() { const w = uni.getWindowInfo(); viewportWidth = w.windowWidth; topInset.value = w.statusBarHeight || 0; bottomInset.value = w.safeAreaInsets?.bottom || 0; wide.value = w.windowWidth >= 900 }
+	onMounted(() => {
+
+		measure(); initialize(); uni.$on('xiaojin-lock', lockNow); tick = setInterval(() => { if (page.value === 'lock') lockSeconds.value = vault.remaining() }, 1000);
+		// #ifdef APP
+		protectScreen()
+		// #endif
+		// #ifdef WEB
+		window.addEventListener('resize', measure)
+		document.addEventListener('visibilitychange', visibility)
+		// #endif
+	})
+	onBackPress(() : boolean => requestBack())
+	function visibility() {
+		// #ifdef WEB
+		if (document.hidden && space.value) lockNow()
+		// #endif
+	}
+	onShow(() => { if (page.value === 'lock') lockSeconds.value = vault.remaining() })
+	onResize(measure)
+	onUnmounted(() => {
+
+		clearInterval(tick); clearTimeout(pinTimer); clearTimeout(toastTimer); uni.$off('xiaojin-lock', lockNow);
+		// #ifdef WEB
+		window.removeEventListener('resize', measure); document.removeEventListener('visibilitychange', visibility)
+		// #endif
+	})
+</script>
+
+<style src="@/common/xiaojin/xiaojin.css"></style>

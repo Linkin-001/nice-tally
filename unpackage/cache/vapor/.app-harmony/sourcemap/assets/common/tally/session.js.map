@@ -1,0 +1,1 @@
+{"version":3,"file":"session.js","sources":["common/tally/session.uts"],"sourcesContent":["import { reactive } from 'vue'\nexport const session = reactive({ locked: true, hiddenAt: 0 })\n"],"names":[],"mappings":"AAAA,MAAA,EAAA,SAAA,IAAA,WAAA;AACa,MAAA,UAAU,2BAAS,EAAE,QAAQ,MAAM,UAAU,GAAG;","sourceRoot":"../../../../../../../.."}

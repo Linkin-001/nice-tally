@@ -1,0 +1,7 @@
+import { UUID } from 'Foundation'
+export function randomHex(length: number): string {
+  let result = ''
+  while (result.length < length * 2) result += UUID().uuidString.split('-').join('').toLowerCase()
+  return result.substring(0, length * 2)
+}
+export function protectScreen(): void {}

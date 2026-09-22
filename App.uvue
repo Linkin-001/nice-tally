@@ -1,0 +1,10 @@
+<script setup lang="uts">
+import { session } from '@/common/tally/session.uts'
+onAppHide(() => { session.locked = true; session.hiddenAt = Date.now(); uni.$emit('xiaojin-lock') })
+</script>
+<style>
+/* #ifdef WEB */
+page { background-color: #F7F8FA; }
+body { margin: 0; }
+/* #endif */
+</style>

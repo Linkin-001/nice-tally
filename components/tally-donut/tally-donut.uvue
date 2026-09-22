@@ -1,0 +1,26 @@
+<template><view class="donut-wrap"><canvas id="tally-donut" class="donut-canvas" type="2d" /><view class="donut-label"><text class="donut-caption">{{ label }}</text><text class="donut-value" :style="{ color: dark ? '#f0f5f5' : '#26334b' }">{{ value }}</text></view></view></template>
+<script setup lang="uts">
+const props = defineProps<{ amounts: number[], colors: string[], label: string, value: string, dark: boolean }>()
+const instance = getCurrentInstance()!.proxy!
+let context: CanvasRenderingContext2D | null = null
+function draw() {
+  const ctx = context
+  if (ctx == null) return
+  ctx.clearRect(0, 0, 170, 170)
+  let total = 0; props.amounts.forEach((v: number) => { total += v })
+  ctx.lineWidth = 25
+  let angle = -Math.PI / 2
+  if (total == 0) { ctx.beginPath(); ctx.strokeStyle = props.dark ? '#344249' : '#edf2f3'; ctx.arc(85, 85, 65, 0, 2 * Math.PI); ctx.stroke(); return }
+  props.amounts.forEach((v: number, i: number) => { if (v > 0) { const end = angle + v / total * Math.PI * 2; ctx.beginPath(); ctx.strokeStyle = props.colors[i]; ctx.arc(85, 85, 65, angle, end); ctx.stroke(); angle = end } })
+}
+onMounted(() => { uni.createCanvasContextAsync({ id: 'tally-donut', component: instance, success: (canvasContext: CanvasContext) => { context = canvasContext.getContext('2d')!; const canvas = context!.canvas; canvas.width = 340; canvas.height = 340; context!.scale(2, 2); draw() } }) })
+watch(() => props.amounts, () => draw(), { deep: true })
+watch(() => props.dark, () => draw())
+</script>
+<style>
+.donut-wrap { width: 170px; height: 170px; position: relative; flex-shrink: 0; }
+.donut-canvas { width: 170px; height: 170px; }
+.donut-label { position: absolute; left: 25px; right: 25px; top: 65px; align-items: center; }
+.donut-caption { font-size: 11px; color: #8895a6; }
+.donut-value { font-size: 17px; font-weight: 700; margin-top: 5px; }
+</style>

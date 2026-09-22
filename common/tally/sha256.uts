@@ -1,0 +1,38 @@
+// Portable SHA-256 for the local screen-lock verifier. Ledger/exports are not encrypted.
+function rotate(value: number, count: number): number { return (value >>> count) | (value << (32 - count)) }
+export function sha256(input: string): string {
+  const k = [1116352408,1899447441,3049323471,3921009573,961987163,1508970993,2453635748,2870763221,3624381080,310598401,607225278,1426881987,1925078388,2162078206,2614888103,3248222580,3835390401,4022224774,264347078,604807628,770255983,1249150122,1555081692,1996064986,2554220882,2821834349,2952996808,3210313671,3336571891,3584528711,113926993,338241895,666307205,773529912,1294757372,1396182291,1695183700,1986661051,2177026350,2456956037,2730485921,2820302411,3259730800,3345764771,3516065817,3600352804,4094571909,275423344,430227734,506948616,659060556,883997877,958139571,1322822218,1537002063,1747873779,1955562222,2024104815,2227730452,2361852424,2428436474,2756734187,3204031479,3329325298]
+  const h = [1779033703,3144134277,1013904242,2773480762,1359893119,2600822924,528734635,1541459225]
+  const bytes: number[] = []
+  // Callers supply ASCII salt + digits only.
+  for (let i = 0; i < input.length; i++) bytes.push(input.charCodeAt(i))
+  const bitLength = bytes.length * 8
+  bytes.push(128)
+  while (bytes.length % 64 != 56) bytes.push(0)
+  for (let i = 0; i < 4; i++) bytes.push(0)
+  for (let i = 3; i >= 0; i--) bytes.push((bitLength >>> (i * 8)) & 255)
+  for (let offset = 0; offset < bytes.length; offset += 64) {
+    const w: number[] = []
+    for (let i = 0; i < 16; i++) { const j = offset + i * 4; w.push((bytes[j] << 24) | (bytes[j + 1] << 16) | (bytes[j + 2] << 8) | bytes[j + 3]) }
+    for (let i = 16; i < 64; i++) {
+      const x = w[i - 15]; const y = w[i - 2]
+      w.push((w[i - 16] + (rotate(x, 7) ^ rotate(x, 18) ^ (x >>> 3)) + w[i - 7] + (rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10))) | 0)
+    }
+    let a = h[0]; let b = h[1]; let c = h[2]; let d = h[3]; let e = h[4]; let f = h[5]; let g = h[6]; let z = h[7]
+    for (let i = 0; i < 64; i++) {
+      const t1 = (z + (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) + ((e & f) ^ (~e & g)) + k[i] + w[i]) | 0
+      const t2 = ((rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0
+      z = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0
+    }
+    h[0] = (h[0] + a) | 0; h[1] = (h[1] + b) | 0; h[2] = (h[2] + c) | 0; h[3] = (h[3] + d) | 0
+    h[4] = (h[4] + e) | 0; h[5] = (h[5] + f) | 0; h[6] = (h[6] + g) | 0; h[7] = (h[7] + z) | 0
+  }
+  let output = ''
+  h.forEach((word: number) => { let part = (word >>> 0).toString(16); while (part.length < 8) part = '0' + part; output += part })
+  return output
+}
+export function pinVerifier(salt: string, pin: string): string {
+  let result = salt + ':' + pin
+  for (let i = 0; i < 2048; i++) result = sha256(result)
+  return result
+}

@@ -1,0 +1,4 @@
+// All current UI assets are generated and stored locally. No runtime image request is external.
+export const suppliedAssets: string[] = ['logo', 'welcome', 'book', 'home', 'family', 'travel', 'work', 'shield', 'lock', 'dining', 'shopping', 'transport', 'chart', 'record', 'user', 'empty', 'backup', 'coin']
+const raster: Record<string, string> = { logo: 'logo.png', welcome: 'welcome.png', book: 'book.png', home: 'home.png', family: 'family.png', travel: 'travel.png', work: 'work.png', shield: 'shield.png', lock: 'lock.png', dining: 'dining.png', shopping: 'shopping.png', transport: 'transport.png', chart: 'chart.png', record: 'record.png', user: 'user.png', empty: 'empty.png', backup: 'backup.png', coin: 'coin.png' }
+export const assetPath = (name: string) => '/static/xiaojin/' + (raster[name] || name + '.svg')

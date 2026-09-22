@@ -1,0 +1,17 @@
+import SecureRandom from 'java.security.SecureRandom'
+import WindowManager from 'android.view.WindowManager'
+import { UTSAndroid } from 'io.dcloud.uts'
+export function randomHex(length: number): string {
+  const rng = new SecureRandom()
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    const n = rng.nextInt(256)
+    const h = n.toString(16)
+    result += h.length == 1 ? '0' + h : h
+  }
+  return result
+}
+export function protectScreen(): void {
+  const activity = UTSAndroid.getUniActivity()
+  if (activity != null) activity.runOnUiThread(() => { activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE) })
+}

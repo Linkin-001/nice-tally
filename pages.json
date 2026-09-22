@@ -1,0 +1,5 @@
+{
+  "pages": [{ "path": "pages/xiaojin/index", "style": { "navigationStyle": "custom", "navigationBarTitleText": "小金账", "disableScroll": true } }, { "path": "pages/tally/index", "style": { "navigationStyle": "custom", "navigationBarTitleText": "旧版活动账本", "disableScroll": true } }],
+  "globalStyle": { "navigationBarTextStyle": "black", "navigationBarBackgroundColor": "#F7F8FA", "backgroundColor": "#F7F8FA" },
+  "easycom": { "autoscan": true }
+}

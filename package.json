@@ -1,0 +1,22 @@
+{
+  "name": "nice-tally",
+  "version": "1.0.0",
+  "private": true,
+  "description": "小金账 · 完全离线、多密码空间的 uni-app x 记账应用",
+  "scripts": {
+    "test": "node scripts/test-ledger.cjs && node scripts/test-xiaojin.cjs",
+    "test:ui": "node scripts/test-xiaojin-browser.cjs",
+    "build:web": "node scripts/build.cjs",
+    "preview": "node scripts/preview.cjs"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  },
+  "engines": {
+    "HBuilderX": "^5.24"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^1.3.0",
+    "@noble/hashes": "^1.8.0"
+  }
+}

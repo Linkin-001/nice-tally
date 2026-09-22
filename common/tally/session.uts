@@ -1,0 +1,2 @@
+import { reactive } from 'vue'
+export const session = reactive({ locked: true, hiddenAt: 0 })

@@ -1,0 +1,46 @@
+<template>
+  <view class="chart-frame">
+    <view v-if="chart == 'number'" class="chart-number"><text class="chart-total" :style="{color:accent}">{{ formatted(total) }}</text><text class="chart-caption">{{ count ? '条记录' : '合计' }}</text></view>
+    <view v-else-if="chart == 'rank'" class="chart-rank"><view v-for="(g,i) in groups" :key="g.name" class="rank-row"><view class="rank-label"><text class="rank-name">{{ Number(i)+1 }}. {{ g.name }}</text><text class="rank-value">{{ formatted(g.value) }}</text></view><view class="rank-track"><view class="rank-fill" :style="{width:(absoluteMax ? Math.abs(g.value)/absoluteMax*100 : 0)+'%',backgroundColor:colors[Number(i)%colors.length]}" /></view></view></view>
+    <view v-else class="canvas-wrap"><canvas id="xj-chart" class="chart-canvas" type="2d" /><view v-if="chart == 'donut'" class="chart-center"><text class="chart-caption">{{ groups.length ? '分类分布' : '暂无记录' }}</text><text class="chart-center-value">{{ groups.length }} 项</text></view></view>
+    <text v-if="chart == 'line' || chart == 'bar'" class="chart-caption">{{ groups.length ? groups[0].name+' — '+groups[groups.length-1].name : '暂无符合条件的数据' }}</text>
+    <text v-if="chart == 'donut' && hasNegative" class="chart-caption">包含负数，请改用柱状图或折线图</text>
+  </view>
+</template>
+<script setup lang="ts">
+import {computed,getCurrentInstance,onMounted,watch,nextTick} from 'vue'
+const props=withDefaults(defineProps<{groups:{name:string;value:number;ids:string[]}[];chart:string;accent:string;count?:boolean}>(),{count:false})
+const colors=['#F56B87','#479DD8','#38B69A','#9275D9','#EC9B51','#526073']
+const total=computed(()=>props.groups.reduce((sum,g)=>sum+g.value,0)),max=computed(()=>Math.max(0,...props.groups.map(g=>g.value)))
+const absoluteMax=computed(()=>Math.max(0,...props.groups.map(g=>Math.abs(g.value)))),hasNegative=computed(()=>props.groups.some(g=>g.value<0))
+const formatted=(n:number)=>props.count?String(n):(n/100).toFixed(2)
+const instance=getCurrentInstance()!.proxy!
+let context:any=null
+function draw(){const ctx=context;if(!ctx)return;ctx.clearRect(0,0,280,220);const gs=props.groups
+  if(props.chart==='donut'){ctx.lineWidth=25;let angle=-Math.PI/2;if(!total.value||hasNegative.value){ctx.beginPath();ctx.strokeStyle='#EDF0F4';ctx.arc(140,110,77,0,2*Math.PI);ctx.stroke();return}gs.forEach((g,i)=>{if(g.value<=0)return;const end=angle+g.value/total.value*Math.PI*2;ctx.beginPath();ctx.strokeStyle=colors[i%colors.length];ctx.arc(140,110,77,angle,end);ctx.stroke();angle=end});return}
+  ctx.strokeStyle='#EDF0F4';ctx.lineWidth=1;for(let i=0;i<4;i++){ctx.beginPath();ctx.moveTo(34,24+i*52);ctx.lineTo(274,24+i*52);ctx.stroke()}
+  if(!gs.length)return;const peak=max.value;const low=Math.min(0,...gs.map(g=>g.value));const span=peak-low||1;const y=(v:number)=>180-(v-low)/span*148;ctx.fillStyle='#8590A2';ctx.font='10px sans-serif';ctx.fillText(formatted(peak),0,17);ctx.fillText(formatted(low),0,196);ctx.beginPath();ctx.moveTo(34,y(0));ctx.lineTo(274,y(0));ctx.stroke()
+  const step=234/gs.length
+  if(props.chart==='bar'){gs.forEach((g,i)=>{ctx.fillStyle=colors[i%colors.length];ctx.fillRect(38+i*step,Math.min(y(0),y(g.value)),Math.max(2,step*0.62),Math.abs(y(g.value)-y(0)))})}
+  else {ctx.beginPath();ctx.strokeStyle=props.accent;ctx.lineWidth=2.5;gs.forEach((g,i)=>{const x=40+(gs.length===1?115:i*228/(gs.length-1));if(i===0)ctx.moveTo(x,y(g.value));else ctx.lineTo(x,y(g.value))});ctx.stroke();gs.forEach((g,i)=>{const x=40+(gs.length===1?115:i*228/(gs.length-1));ctx.beginPath();ctx.fillStyle=props.accent;ctx.arc(x,y(g.value),3,0,2*Math.PI);ctx.fill()})}
+}
+function init(){if(['number','rank'].includes(props.chart))return;uni.createCanvasContextAsync({id:'xj-chart',component:instance,success:(c:any)=>{context=c.getContext('2d');context.canvas.width=560;context.canvas.height=440;context.scale(2,2);draw()}})}
+onMounted(init);watch(()=>props.groups,()=>draw(),{deep:true});watch(()=>props.chart,async()=>{context=null;await nextTick();init()});watch(()=>props.accent,draw)
+</script>
+<style>
+.chart-frame { align-items: center; margin: 8px 0 16px; width: 100%; }
+.canvas-wrap { width: 280px; height: 220px; position: relative; }
+.chart-canvas { width: 280px; height: 220px; }
+.chart-center { position: absolute; top: 87px; left: 60px; right: 60px; align-items: center; }
+.chart-caption { font-size: 11px; color: #8590A2; line-height: 19px; text-align: center; }
+.chart-center-value { font-size: 19px; font-weight: 600; color: #24324A; margin-top: 6px; }
+.chart-number { padding: 44px 0; align-items: center; }
+.chart-total { font-size: 36px; font-weight: 600; margin-bottom: 10px; }
+.chart-rank { width: 100%; padding: 10px 0; }
+.rank-row { margin-bottom: 20px; }
+.rank-label { flex-direction: row; justify-content: space-between; margin-bottom: 9px; }
+.rank-name { font-size: 13px; color: #536078; }
+.rank-value { font-size: 13px; color: #24324A; }
+.rank-track { height: 6px; background-color: #F1F3F7; border-radius: 3px; }
+.rank-fill { height: 6px; border-radius: 3px; }
+</style>

@@ -1,0 +1,23 @@
+<template>
+  <view class="activity-row" @click="$emit('select', record.id)">
+    <view class="activity-icon" :style="{ backgroundColor: category.background }"><tally-icon :name="category.icon" :tone="tone" :size="23" /></view>
+    <view class="activity-body"><text class="activity-title" :style="{ color: dark ? '#edf3f5' : '#28364b' }">{{ record.category }} · {{ record.place.length > 0 ? record.place : '未填写地点' }}</text><text class="activity-meta">{{ record.date.substring(5).replace('-', '月') }}日  {{ record.time }}  {{ record.people.length }}人</text></view>
+    <text class="activity-amount" :style="{ color: net >= 0 ? '#00ae7c' : '#f45c68' }">{{ signedMoney(net) }}</text>
+  </view>
+</template>
+<script setup lang="uts">
+import { Activity, categoryFor, recordNet, signedMoney } from '@/common/tally/ledger.uts'
+const props = defineProps<{ record: Activity, dark: boolean }>()
+defineEmits(['select'])
+const category = computed(() => categoryFor(props.record.category))
+const net = computed(() => recordNet(props.record))
+const tone = computed((): string => { const tones = ['orange', 'green', 'blue', 'pink', 'gold', 'muted']; const names = ['聚餐', '牌局', '运动', '扑克', '出游', '其他']; return tones[Math.max(0, names.indexOf(props.record.category))] })
+</script>
+<style>
+.activity-row { flex-direction: row; align-items: center; padding: 15px 0; }
+.activity-icon { width: 44px; height: 44px; border-radius: 16px; align-items: center; justify-content: center; margin-right: 12px; flex-shrink: 0; }
+.activity-body { flex: 1; margin-right: 6px; }
+.activity-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-meta { color: #909bad; font-size: 11px; margin-top: 6px; }
+.activity-amount { font-size: 15px; font-weight: 600; }
+</style>

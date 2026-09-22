@@ -1,0 +1,8 @@
+import { cryptoFramework } from '@kit.CryptoArchitectureKit'
+export function randomHex(length: number): string {
+  const data = cryptoFramework.createRandom().generateRandomSync(length).data
+  let result = ''
+  for(let i = 0; i < data.length; i++){ const h = data[i].toString(16); result += h.length == 1 ? '0' + h : h }
+  return result
+}
+export function protectScreen(): void {}
